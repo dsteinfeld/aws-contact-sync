@@ -127,7 +127,7 @@ class TestStatusReportingProperties:
     def _verify_status_reporting_completeness(self, sync_operation: SyncOperation):
         """Verify that status reporting includes all required information."""
         # Mock configuration manager
-        mock_config_manager = Mock(spec=DynamoDBConfigManager)
+        mock_config_manager = Mock()
         mock_config_manager.get_configuration.return_value = {
             "notification_settings": {
                 "user_notifications_config": {
