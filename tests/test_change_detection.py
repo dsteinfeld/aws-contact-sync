@@ -22,11 +22,10 @@ class TestChangeDetectionProperties:
         management_account_id=st.text(min_size=12, max_size=12, alphabet=st.characters(whitelist_categories=('Nd',))),
         event_name=st.sampled_from(["PutContactInformation", "PutAlternateContact"]),
         user_type=st.sampled_from(["IAMUser", "AssumedRole", "Root"]),
-        has_account_id_in_params=st.booleans(),
-        contact_type=st.sampled_from(["BILLING", "OPERATIONS", "SECURITY"]) if st.sampled_from(["PutContactInformation", "PutAlternateContact"]) == "PutAlternateContact" else st.just("primary")
+        has_account_id_in_params=st.booleans()
     )
     @settings(max_examples=100, deadline=None)
-    def test_contact_change_detection_timing(self, management_account_id, event_name, user_type, has_account_id_in_params, contact_type):
+    def test_contact_change_detection_timing(self, management_account_id, event_name, user_type, has_account_id_in_params):
         """Property 1: For any contact information change (primary or alternate) in the management account,
         the Contact_Sync_Service should detect the change within 5 minutes regardless of the contact type
         or number of fields modified.
@@ -37,6 +36,12 @@ class TestChangeDetectionProperties:
         assume(len(management_account_id) == 12)
         assume(management_account_id.isdigit())
         
+        # Determine contact type based on event name
+        if event_name == "PutAlternateContact":
+            contact_type = st.sampled_from(["BILLING", "OPERATIONS", "SECURITY"]).example()
+        else:
+            contact_type = "primary"
+        
         parser = CloudTrailEventParser(management_account_id)
         
         # Generate a CloudTrail event
@@ -45,7 +50,7 @@ class TestChangeDetectionProperties:
             event_name=event_name,
             user_type=user_type,
             has_account_id_in_params=has_account_id_in_params,
-            contact_type=contact_type if event_name == "PutAlternateContact" else "primary"
+            contact_type=contact_type
         )
         
         # Parse the event
