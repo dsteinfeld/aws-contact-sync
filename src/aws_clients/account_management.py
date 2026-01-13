@@ -10,6 +10,8 @@ import logging
 
 from ..models.contact_models import ContactInformation, AlternateContact
 from ..config.config_manager import RetryConfig
+from ..error_handling.recovery_manager import RecoveryManager, RecoveryConfig
+from ..error_handling.circuit_breaker import CircuitBreakerConfig
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +51,17 @@ class AccountManagementClient:
         self.retry_config = retry_config or RetryConfig()
         self.session = session or boto3.Session()
         self.client = self.session.client('account')
+        
+        # Initialize recovery manager with enhanced error handling
+        recovery_config = RecoveryConfig(
+            max_retry_attempts=self.retry_config.max_attempts,
+            base_retry_delay=self.retry_config.base_delay,
+            max_retry_delay=self.retry_config.max_delay,
+            circuit_breaker_enabled=True,
+            circuit_breaker_failure_threshold=5,
+            circuit_breaker_timeout=60.0
+        )
+        self.recovery_manager = RecoveryManager(config=recovery_config)
     
     def _calculate_backoff_delay(self, attempt: int) -> float:
         """Calculate exponential backoff delay with jitter.
@@ -157,7 +170,19 @@ class AccountManagementClient:
             return response['ContactInformation']
         
         try:
-            contact_data = self._execute_with_retry('get_contact_information', _get_contact)
+            # Use recovery manager for enhanced error handling
+            operation_name = f"get_contact_information_{account_id or 'current'}"
+            context = {'account_id': account_id, 'operation': 'get_contact_information'}
+            
+            result = self.recovery_manager.execute_with_recovery(
+                operation_name, _get_contact, context
+            )
+            
+            if not result.success:
+                logger.error(f"Failed to get contact information for account {account_id}: {result.error}")
+                raise result.error
+            
+            contact_data = result.result
             
             # Convert AWS API response to our data model
             return ContactInformation(
@@ -221,7 +246,18 @@ class AccountManagementClient:
             return self.client.put_contact_information(**kwargs)
         
         try:
-            self._execute_with_retry('put_contact_information', _put_contact)
+            # Use recovery manager for enhanced error handling
+            operation_name = f"put_contact_information_{account_id or 'current'}"
+            context = {'account_id': account_id, 'operation': 'put_contact_information'}
+            
+            result = self.recovery_manager.execute_with_recovery(
+                operation_name, _put_contact, context
+            )
+            
+            if not result.success:
+                logger.error(f"Failed to update contact information for account {account_id}: {result.error}")
+                raise result.error
+            
             logger.info(f"Successfully updated contact information for account {account_id}")
             
         except Exception as e:
@@ -254,7 +290,19 @@ class AccountManagementClient:
             return response['AlternateContact']
         
         try:
-            contact_data = self._execute_with_retry('get_alternate_contact', _get_alternate_contact)
+            # Use recovery manager for enhanced error handling
+            operation_name = f"get_alternate_contact_{contact_type}_{account_id or 'current'}"
+            context = {'account_id': account_id, 'contact_type': contact_type, 'operation': 'get_alternate_contact'}
+            
+            result = self.recovery_manager.execute_with_recovery(
+                operation_name, _get_alternate_contact, context
+            )
+            
+            if not result.success:
+                logger.error(f"Failed to get {contact_type} alternate contact for account {account_id}: {result.error}")
+                raise result.error
+            
+            contact_data = result.result
             
             # Convert AWS API response to our data model
             return AlternateContact(
@@ -293,9 +341,24 @@ class AccountManagementClient:
             return self.client.put_alternate_contact(**kwargs)
         
         try:
-            self._execute_with_retry('put_alternate_contact', _put_alternate_contact)
+            # Use recovery manager for enhanced error handling
+            operation_name = f"put_alternate_contact_{contact.contact_type}_{account_id or 'current'}"
+            context = {'account_id': account_id, 'contact_type': contact.contact_type, 'operation': 'put_alternate_contact'}
+            
+            result = self.recovery_manager.execute_with_recovery(
+                operation_name, _put_alternate_contact, context
+            )
+            
+            if not result.success:
+                logger.error(f"Failed to update {contact.contact_type} alternate contact for account {account_id}: {result.error}")
+                raise result.error
+            
             logger.info(f"Successfully updated {contact.contact_type} alternate contact for account {account_id}")
             
         except Exception as e:
             logger.error(f"Failed to update {contact.contact_type} alternate contact for account {account_id}: {e}")
             raise
+    
+    def get_health_status(self) -> Dict[str, Any]:
+        """Get health status of the client and its error handling components."""
+        return self.recovery_manager.get_health_status()

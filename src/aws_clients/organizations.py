@@ -7,6 +7,7 @@ from botocore.exceptions import ClientError, BotoCoreError
 import logging
 
 from ..config.config_manager import RetryConfig
+from ..error_handling.recovery_manager import RecoveryManager, RecoveryConfig
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +59,17 @@ class OrganizationsClient:
         self.retry_config = retry_config or RetryConfig()
         self.session = session or boto3.Session()
         self.client = self.session.client('organizations')
+        
+        # Initialize recovery manager with enhanced error handling
+        recovery_config = RecoveryConfig(
+            max_retry_attempts=self.retry_config.max_attempts,
+            base_retry_delay=self.retry_config.base_delay,
+            max_retry_delay=self.retry_config.max_delay,
+            circuit_breaker_enabled=True,
+            circuit_breaker_failure_threshold=5,
+            circuit_breaker_timeout=60.0
+        )
+        self.recovery_manager = RecoveryManager(config=recovery_config)
     
     def _is_retryable_error(self, error: Exception) -> bool:
         """Determine if an error is retryable.
@@ -153,13 +165,14 @@ class OrganizationsClient:
             
             return self.client.list_accounts(**kwargs)
         
-        try:
+        def _list_all_accounts():
+            """List all accounts with pagination."""
             accounts = []
             next_token = None
             
             while True:
-                # Get a page of accounts with retry logic
-                response = self._execute_with_retry('list_accounts', _list_accounts_page, next_token)
+                # Get a page of accounts
+                response = _list_accounts_page(next_token)
                 
                 # Process accounts from this page
                 for account_data in response.get('Accounts', []):
@@ -192,6 +205,22 @@ class OrganizationsClient:
                 
                 logger.debug(f"Retrieved {len(response.get('Accounts', []))} accounts, continuing pagination")
             
+            return accounts
+        
+        try:
+            # Use recovery manager for enhanced error handling
+            operation_name = "list_accounts"
+            context = {'include_inactive': include_inactive, 'operation': 'list_accounts'}
+            
+            result = self.recovery_manager.execute_with_recovery(
+                operation_name, _list_all_accounts, context
+            )
+            
+            if not result.success:
+                logger.error(f"Failed to list organization accounts: {result.error}")
+                raise result.error
+            
+            accounts = result.result
             logger.info(f"Successfully retrieved {len(accounts)} accounts from organization")
             return accounts
             
@@ -293,7 +322,19 @@ class OrganizationsClient:
             return self.client.describe_organization()
         
         try:
-            response = self._execute_with_retry('describe_organization', _describe_organization)
+            # Use recovery manager for enhanced error handling
+            operation_name = "describe_organization"
+            context = {'operation': 'describe_organization'}
+            
+            result = self.recovery_manager.execute_with_recovery(
+                operation_name, _describe_organization, context
+            )
+            
+            if not result.success:
+                logger.error(f"Failed to get organization information: {result.error}")
+                raise result.error
+            
+            response = result.result
             org_data = response['Organization']
             
             info = {
@@ -310,3 +351,7 @@ class OrganizationsClient:
         except Exception as e:
             logger.error(f"Failed to get organization information: {e}")
             raise
+    
+    def get_health_status(self) -> Dict[str, Any]:
+        """Get health status of the client and its error handling components."""
+        return self.recovery_manager.get_health_status()
