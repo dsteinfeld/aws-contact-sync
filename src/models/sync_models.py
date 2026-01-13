@@ -10,7 +10,7 @@ from .contact_models import ContactInformation, AlternateContact
 class AccountSyncResult:
     """Result of synchronizing contact information to a single account."""
     account_id: str
-    status: Literal["success", "failed", "skipped"]
+    status: Literal["pending", "success", "failed", "skipped"]
     timestamp: datetime
     error_message: Optional[str] = None
     retry_count: int = 0
@@ -19,7 +19,7 @@ class AccountSyncResult:
         """Validate fields."""
         if not self.account_id.strip():
             raise ValueError("account_id cannot be empty")
-        if self.status not in ["success", "failed", "skipped"]:
+        if self.status not in ["pending", "success", "failed", "skipped"]:
             raise ValueError(f"Invalid status: {self.status}")
         if self.retry_count < 0:
             raise ValueError("retry_count cannot be negative")
