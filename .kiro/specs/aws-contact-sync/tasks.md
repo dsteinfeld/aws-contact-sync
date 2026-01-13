@@ -72,11 +72,11 @@ This implementation plan breaks down the serverless AWS contact synchronization 
     - Implement logic to distinguish management account vs member account operations
     - _Requirements: 1.1, 1.2, 1.3_
 
-  - [-] 5.2 Write property test for change detection
+  - [x] 5.2 Write property test for change detection
     - **Property 1: Contact Change Detection Timing**
     - **Validates: Requirements 1.1, 1.2, 1.3**
 
-  - [ ] 5.3 Create EventBridge rule configuration
+  - [x] 5.3 Create EventBridge rule configuration
     - Define EventBridge rules for Account Management events
     - Configure event filtering for contact-related API calls (PutContactInformation, PutAlternateContact)
     - **Critical**: Filter to only process management account contact changes
@@ -85,7 +85,7 @@ This implementation plan breaks down the serverless AWS contact synchronization 
     - Set up Lambda function triggers with proper event filtering
     - _Requirements: 1.1, 1.2_
 
-  - [ ] 5.4 Write unit tests for event parsing
+  - [-] 5.4 Write unit tests for event parsing
     - Test various CloudTrail event formats
     - Test event filtering and validation logic
     - **Critical**: Test filtering logic - events with `accountId` in requestParameters should be ignored (member account updates)
