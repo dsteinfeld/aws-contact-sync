@@ -63,7 +63,7 @@ This implementation plan breaks down the serverless AWS contact synchronization 
 - [x] 4. Checkpoint - Core infrastructure complete
   - Ensure all tests pass, ask the user if questions arise.
 
-- [-] 5. Implement contact change detection
+- [x] 5. Implement contact change detection
   - [x] 5.1 Create CloudTrail event parser
     - Parse Account Management API events from CloudTrail
     - Extract contact change information and initiating user
@@ -85,7 +85,7 @@ This implementation plan breaks down the serverless AWS contact synchronization 
     - Set up Lambda function triggers with proper event filtering
     - _Requirements: 1.1, 1.2_
 
-  - [-] 5.4 Write unit tests for event parsing
+  - [x] 5.4 Write unit tests for event parsing
     - Test various CloudTrail event formats
     - Test event filtering and validation logic
     - **Critical**: Test filtering logic - events with `accountId` in requestParameters should be ignored (member account updates)
@@ -94,15 +94,15 @@ This implementation plan breaks down the serverless AWS contact synchronization 
     - Verify infinite loop prevention mechanisms
     - _Requirements: 1.1, 1.2, 1.3_
 
-- [ ] 6. Implement contact synchronization logic
-  - [ ] 6.1 Create contact sync handler Lambda function
+- [-] 6. Implement contact synchronization logic
+  - [x] 6.1 Create contact sync handler Lambda function
     - Main orchestrator function triggered by EventBridge
     - Parse incoming events and initiate synchronization
     - Retrieve organization member accounts
     - Apply configuration-based filtering (contact types, exclusions)
     - _Requirements: 2.1, 2.2, 5.1, 5.2_
 
-  - [ ] 6.2 Write property test for contact propagation
+  - [-] 6.2 Write property test for contact propagation
     - **Property 2: Contact Information Propagation Consistency**
     - **Validates: Requirements 2.1, 2.2, 2.3**
 
