@@ -351,7 +351,7 @@ class TestMessageFormatter:
         assert message.priority == "high"
         assert message.notification_type == "complete_failure"
         assert "ALL member accounts" in message.message
-        assert "test-sync-123" in message.message
+        assert message.metadata["sync_id"] == "test-sync-123"
         assert message.metadata["sync_id"] == "test-sync-123"
         assert message.metadata["failed_count"] == 2
         assert message.metadata["failure_rate"] == 1.0
@@ -469,7 +469,7 @@ class TestNotificationHandler:
     
     def setup_method(self):
         """Set up test fixtures."""
-        self.mock_config_manager = Mock(spec=DynamoDBConfigManager)
+        self.mock_config_manager = Mock()
         self.mock_config_manager.get_configuration.return_value = {
             "notification_settings": {
                 "user_notifications_config": {

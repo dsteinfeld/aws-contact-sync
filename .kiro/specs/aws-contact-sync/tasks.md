@@ -135,7 +135,7 @@ This implementation plan breaks down the serverless AWS contact synchronization 
     - Handle notification delivery failures
     - _Requirements: 2.5, 3.3_
 
-  - [-] 7.4 Write unit tests for notification system
+  - [ ] 7.4 Write unit tests for notification system
     - Test notification formatting and delivery
     - Test fallback mechanisms
     - _Requirements: 2.5, 3.3_
