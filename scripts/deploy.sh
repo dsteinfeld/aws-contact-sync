@@ -2,6 +2,7 @@
 
 # AWS Contact Synchronization System Deployment Script
 # This script automates the deployment of the contact sync system using AWS SAM
+# Compatible with Windows (Git Bash), macOS, and Linux
 
 set -e  # Exit on any error
 
