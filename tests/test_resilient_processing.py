@@ -221,7 +221,13 @@ class TestResilientProcessingProperties:
         assume(len(successful_accounts) > 0)
 
         # Generate contact data
-        contact_data = self._generate_contact_data(contact_type)
+        contact_data_dict = self._generate_contact_data(contact_type)
+        
+        # Create proper contact object based on type
+        if contact_type.lower() == "primary":
+            contact_data = ContactInformation(**contact_data_dict)
+        else:
+            contact_data = AlternateContact(**contact_data_dict)
 
         # Mock the AWS clients and state tracker
         with patch('src.lambda_handlers.contact_sync_handler.OrganizationsClient') as mock_orgs, \
@@ -347,7 +353,13 @@ class TestResilientProcessingProperties:
         account_ids = [f"123456789{str(i).zfill(3)}" for i in range(num_accounts)]
 
         # Generate contact data
-        contact_data = self._generate_contact_data(contact_type)
+        contact_data_dict = self._generate_contact_data(contact_type)
+        
+        # Create proper contact object based on type
+        if contact_type.lower() == "primary":
+            contact_data = ContactInformation(**contact_data_dict)
+        else:
+            contact_data = AlternateContact(**contact_data_dict)
 
         # Create failure mapping - some accounts will fail, some will succeed
         failure_map = {}
