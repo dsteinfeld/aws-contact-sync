@@ -147,7 +147,7 @@ This implementation plan breaks down the serverless AWS contact synchronization 
     - Create error recovery mechanisms
     - _Requirements: 1.4, 3.1, 3.2, 3.4_
 
-  - [-] 8.2 Write unit tests for error scenarios
+  - [ ] 8.2 Write unit tests for error scenarios
     - Test various error conditions and recovery
     - Test circuit breaker functionality
     - _Requirements: 1.4, 3.1, 3.2, 3.4_

@@ -45,7 +45,7 @@ class CircuitBreakerStats:
     state_changes: int = 0
     last_failure_time: Optional[float] = None
     last_success_time: Optional[float] = None
-    current_timeout: float = 60.0
+    current_timeout: float = field(default_factory=lambda: 60.0)
 
 
 class CircuitBreakerError(Exception):
@@ -76,6 +76,7 @@ class CircuitBreaker:
         self.name = name
         self.config = config or CircuitBreakerConfig()
         self.stats = CircuitBreakerStats()
+        self.stats.current_timeout = self.config.timeout
         self.state = CircuitState.CLOSED
         self._lock = Lock()
         
@@ -169,12 +170,8 @@ class CircuitBreaker:
             self.stats.state_changes += 1
             self._last_state_change = time.time()
             
-            # Increase timeout with backoff for repeated failures
-            if self.stats.current_timeout < self.config.max_timeout:
-                self.stats.current_timeout = min(
-                    self.stats.current_timeout * self.config.backoff_multiplier,
-                    self.config.max_timeout
-                )
+            # Set current timeout to the configured timeout (not increased on first failure)
+            self.stats.current_timeout = self.config.timeout
             
             logger.error(f"Circuit breaker '{self.name}' transitioned from {old_state.value} to OPEN. "
                         f"Timeout: {self.stats.current_timeout}s")
@@ -243,6 +240,7 @@ class CircuitBreaker:
         with self._lock:
             self.state = CircuitState.CLOSED
             self.stats = CircuitBreakerStats()
+            self.stats.current_timeout = self.config.timeout
             self._consecutive_failures = 0
             self._consecutive_successes = 0
             self._last_state_change = time.time()

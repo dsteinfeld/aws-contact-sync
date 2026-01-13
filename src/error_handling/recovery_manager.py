@@ -10,7 +10,7 @@ import random
 import logging
 from typing import Dict, Any, Optional, Callable, Union, List
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 
 from .error_classifier import ErrorClassifier, ErrorClassification, ErrorCategory, ErrorSeverity
 from .circuit_breaker import CircuitBreakerManager, CircuitBreakerConfig, CircuitBreakerError
@@ -125,7 +125,7 @@ class RecoveryManager:
                 # Success!
                 attempt = RecoveryAttempt(
                     attempt_number=attempt_num,
-                    timestamp=datetime.utcnow(),
+                    timestamp=datetime.now(timezone.utc),
                     success=True,
                     delay_before_attempt=0.0 if attempt_num == 1 else attempts[-1].delay_before_attempt
                 )
@@ -151,7 +151,7 @@ class RecoveryManager:
                 
                 attempt = RecoveryAttempt(
                     attempt_number=attempt_num,
-                    timestamp=datetime.utcnow(),
+                    timestamp=datetime.now(timezone.utc),
                     error=e,
                     success=False,
                     recovery_action="circuit_breaker_open"
@@ -180,7 +180,7 @@ class RecoveryManager:
                 # Record the attempt
                 attempt = RecoveryAttempt(
                     attempt_number=attempt_num,
-                    timestamp=datetime.utcnow(),
+                    timestamp=datetime.now(timezone.utc),
                     error=e,
                     success=False,
                     recovery_action=classification.recovery_action
