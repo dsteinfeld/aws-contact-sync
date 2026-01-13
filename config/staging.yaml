@@ -1,0 +1,63 @@
+# Staging Environment Configuration
+# This file contains environment-specific parameters for staging deployments
+
+Parameters:
+  Environment: staging
+  LogRetentionDays: 30
+  
+  # Lambda Configuration
+  LambdaTimeout: 300
+  LambdaMemorySize: 512
+  
+  # DynamoDB Configuration
+  DynamoDBBillingMode: PAY_PER_REQUEST
+  
+  # Monitoring Configuration
+  EnableDetailedMonitoring: true
+  AlarmThreshold: 3  # Moderate threshold for staging
+  
+  # Notification Configuration
+  NotifyOnSuccess: false  # Disable success notifications in staging
+  NotifyOnFailure: true
+  NotifyOnPartialFailure: true
+  
+  # CloudTrail Configuration
+  EnableCloudTrail: true
+  CloudTrailLogRetention: 30
+  
+  # Staging-specific settings
+  EnableDebugLogging: false
+  EnableXRayTracing: true
+  
+# Staging-specific resource configurations
+Resources:
+  # Moderate concurrency limits for staging
+  AccountProcessorHandler:
+    ReservedConcurrencyLimit: 5
+  
+  # Standard retention for staging logs
+  CloudTrailLogGroup:
+    RetentionInDays: 30
+  
+  # Staging-specific alarms with moderate thresholds
+  ContactSyncErrorAlarm:
+    Threshold: 3
+    EvaluationPeriods: 2
+  
+  AccountProcessorErrorAlarm:
+    Threshold: 5
+    EvaluationPeriods: 2
+  
+  # Additional staging-specific monitoring
+  StagingPerformanceAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-staging-performance'
+      AlarmDescription: 'Monitor staging performance metrics'
+      MetricName: Duration
+      Namespace: AWS/Lambda
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 3
+      Threshold: 30000  # 30 seconds
+      ComparisonOperator: GreaterThanThreshold

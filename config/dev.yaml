@@ -1,0 +1,48 @@
+# Development Environment Configuration
+# This file contains environment-specific parameters for development deployments
+
+Parameters:
+  Environment: dev
+  LogRetentionDays: 7
+  
+  # Lambda Configuration
+  LambdaTimeout: 300
+  LambdaMemorySize: 256
+  
+  # DynamoDB Configuration
+  DynamoDBBillingMode: PAY_PER_REQUEST
+  
+  # Monitoring Configuration
+  EnableDetailedMonitoring: false
+  AlarmThreshold: 10  # Higher threshold for dev
+  
+  # Notification Configuration
+  NotifyOnSuccess: true  # Enable success notifications in dev
+  NotifyOnFailure: true
+  
+  # CloudTrail Configuration
+  EnableCloudTrail: true
+  CloudTrailLogRetention: 7
+  
+  # Development-specific settings
+  EnableDebugLogging: true
+  EnableXRayTracing: true
+  
+# Development-specific resource configurations
+Resources:
+  # Reduced concurrency limits for development
+  AccountProcessorHandler:
+    ReservedConcurrencyLimit: 2
+  
+  # Shorter retention for development logs
+  CloudTrailLogGroup:
+    RetentionInDays: 7
+  
+  # Development-specific alarms with higher thresholds
+  ContactSyncErrorAlarm:
+    Threshold: 5
+    EvaluationPeriods: 2
+  
+  AccountProcessorErrorAlarm:
+    Threshold: 10
+    EvaluationPeriods: 3

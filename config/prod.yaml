@@ -1,0 +1,108 @@
+# Production Environment Configuration
+# This file contains environment-specific parameters for production deployments
+
+Parameters:
+  Environment: prod
+  LogRetentionDays: 90
+  
+  # Lambda Configuration
+  LambdaTimeout: 900  # 15 minutes for production
+  LambdaMemorySize: 1024  # Higher memory for production
+  
+  # DynamoDB Configuration
+  DynamoDBBillingMode: PAY_PER_REQUEST
+  EnablePointInTimeRecovery: true
+  
+  # Monitoring Configuration
+  EnableDetailedMonitoring: true
+  AlarmThreshold: 1  # Strict threshold for production
+  
+  # Notification Configuration
+  NotifyOnSuccess: false  # Disable success notifications in production
+  NotifyOnFailure: true
+  NotifyOnPartialFailure: true
+  NotifyOnSystemError: true
+  
+  # CloudTrail Configuration
+  EnableCloudTrail: true
+  CloudTrailLogRetention: 90
+  EnableCloudTrailInsights: true
+  
+  # Production-specific settings
+  EnableDebugLogging: false
+  EnableXRayTracing: false  # Disable X-Ray in production for performance
+  EnableTerminationProtection: true
+  
+# Production-specific resource configurations
+Resources:
+  # Production concurrency limits
+  AccountProcessorHandler:
+    ReservedConcurrencyLimit: 10
+  
+  # Extended retention for production logs
+  CloudTrailLogGroup:
+    RetentionInDays: 90
+  
+  # Production-specific alarms with strict thresholds
+  ContactSyncErrorAlarm:
+    Threshold: 1
+    EvaluationPeriods: 1
+    TreatMissingData: breaching
+  
+  AccountProcessorErrorAlarm:
+    Threshold: 3
+    EvaluationPeriods: 2
+    TreatMissingData: breaching
+  
+  # Additional production-specific monitoring
+  ProductionHealthAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-production-health'
+      AlarmDescription: 'Overall system health monitoring'
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+  
+  ProductionLatencyAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-production-latency'
+      AlarmDescription: 'Monitor production latency'
+      MetricName: Duration
+      Namespace: AWS/Lambda
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 60000  # 60 seconds
+      ComparisonOperator: GreaterThanThreshold
+  
+  # Production backup configuration
+  ConfigTableBackup:
+    Type: AWS::DynamoDB::BackupPlan
+    Properties:
+      BackupPlan:
+        BackupPlanName: !Sub '${AWS::StackName}-config-backup'
+        BackupPlanRule:
+          - RuleName: DailyBackups
+            TargetBackupVault: default
+            ScheduleExpression: cron(0 2 * * ? *)
+            Lifecycle:
+              DeleteAfterDays: 30
+  
+  StateTableBackup:
+    Type: AWS::DynamoDB::BackupPlan
+    Properties:
+      BackupPlan:
+        BackupPlanName: !Sub '${AWS::StackName}-state-backup'
+        BackupPlanRule:
+          - RuleName: DailyBackups
+            TargetBackupVault: default
+            ScheduleExpression: cron(0 3 * * ? *)
+            Lifecycle:
+              DeleteAfterDays: 90
