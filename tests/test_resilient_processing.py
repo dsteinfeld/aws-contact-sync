@@ -337,10 +337,10 @@ class TestResilientProcessingProperties:
         )
     )
     @settings(max_examples=50, deadline=None)
-    def test_account_processor_resilient_processing(self,
-                                                    num_accounts: int,
-                                                    contact_type: str,
-                                                    error_types: List[str]):
+    def test_account_processor_handles_mixed_failures(self,
+                                                      num_accounts: int,
+                                                      contact_type: str,
+                                                      error_types: List[str]):
         """
         Property 4b: For any account processor operation where some API calls fail,
         the system should continue processing and properly classify failures as
@@ -355,11 +355,7 @@ class TestResilientProcessingProperties:
         # Generate contact data
         contact_data_dict = self._generate_contact_data(contact_type)
         
-        # Create proper contact object based on type
-        if contact_type.lower() == "primary":
-            contact_data = ContactInformation(**contact_data_dict)
-        else:
-            contact_data = AlternateContact(**contact_data_dict)
+        # Note: AccountProcessorHandler expects contact_data as a dictionary, not an object
 
         # Create failure mapping - some accounts will fail, some will succeed
         failure_map = {}
@@ -416,7 +412,7 @@ class TestResilientProcessingProperties:
                         sync_id="test-sync-123",
                         account_id=account_id,
                         contact_type=contact_type,
-                        contact_data=contact_data,
+                        contact_data=contact_data_dict,
                         initiating_user="test-user"
                     )
                     results[account_id] = result
