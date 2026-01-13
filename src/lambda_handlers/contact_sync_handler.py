@@ -291,13 +291,19 @@ class ContactSyncHandler:
         
         # Store the sync operation
         try:
-            self.state_tracker.create_sync_operation(sync_operation)
-            logger.info(f"Created sync operation {sync_id}")
+            created_sync_op = self.state_tracker.create_sync_operation(
+                initiating_user=sync_operation.initiating_user,
+                contact_type=sync_operation.contact_type,
+                source_account=sync_operation.source_account,
+                target_accounts=sync_operation.target_accounts,
+                contact_data=sync_operation.contact_data
+            )
+            logger.info(f"Created sync operation {created_sync_op.sync_id}")
+            return created_sync_op
         except Exception as e:
             logger.error(f"Failed to create sync operation record: {e}")
             # Continue with synchronization even if state tracking fails
-        
-        return sync_operation
+            return sync_operation
     
     def initiate_account_synchronization(self, sync_operation: SyncOperation) -> None:
         """
@@ -311,7 +317,7 @@ class ContactSyncHandler:
         # Update sync operation status to in_progress
         try:
             sync_operation.status = "in_progress"
-            self.state_tracker.update_sync_operation(sync_operation)
+            self.state_tracker.update_sync_status(sync_operation.sync_id, "in_progress")
         except Exception as e:
             logger.warning(f"Failed to update sync operation status: {e}")
         
@@ -341,7 +347,7 @@ class ContactSyncHandler:
         if failed_invocations > 0 and successful_invocations == 0:
             try:
                 sync_operation.status = "failed"
-                self.state_tracker.update_sync_operation(sync_operation)
+                self.state_tracker.update_sync_status(sync_operation.sync_id, "failed")
             except Exception as e:
                 logger.error(f"Failed to update sync operation status to failed: {e}")
     
