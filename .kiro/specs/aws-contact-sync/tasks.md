@@ -60,7 +60,7 @@ This implementation plan breaks down the serverless AWS contact synchronization 
     - **Property 5: Comprehensive Audit Logging**
     - **Validates: Requirements 4.1, 4.2**
 
-- [ ] 4. Checkpoint - Core infrastructure complete
+- [-] 4. Checkpoint - Core infrastructure complete
   - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 5. Implement contact change detection
