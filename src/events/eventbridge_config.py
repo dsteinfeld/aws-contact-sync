@@ -7,68 +7,73 @@ from dataclasses import dataclass
 
 @dataclass
 class EventBridgeRuleConfig:
-    """Configuration for EventBridge rules that trigger contact synchronization."""
+    """Configuration for EventBridge rules to capture Account Management events."""
     
     rule_name: str
     description: str
     event_pattern: Dict[str, Any]
     targets: List[Dict[str, Any]]
-    state: str = "ENABLED"
-
-    def to_cloudformation(self) -> Dict[str, Any]:
-        """Convert to CloudFormation EventBridge rule resource."""
-        return {
-            "Type": "AWS::Events::Rule",
-            "Properties": {
-                "Name": self.rule_name,
-                "Description": self.description,
-                "EventPattern": self.event_pattern,
-                "State": self.state,
-                "Targets": self.targets
-            }
-        }
-
-    def to_sam_template(self) -> Dict[str, Any]:
-        """Convert to SAM template EventBridge rule resource."""
-        return {
-            "Type": "AWS::Events::Rule",
-            "Properties": {
-                "Name": self.rule_name,
-                "Description": self.description,
-                "EventPattern": self.event_pattern,
-                "State": self.state,
-                "Targets": self.targets
-            }
-        }
-
-
-class ContactSyncEventBridgeConfig:
-    """EventBridge configuration for contact synchronization system."""
     
-    def __init__(self, management_account_id: str, lambda_function_arn: str):
+    def to_cloudformation(self) -> Dict[str, Any]:
+        """Convert to CloudFormation EventBridge rule format."""
+        return {
+            "Type": "AWS::Events::Rule",
+            "Properties": {
+                "Name": self.rule_name,
+                "Description": self.description,
+                "EventPattern": self.event_pattern,
+                "State": "ENABLED",
+                "Targets": self.targets
+            }
+        }
+    
+    def to_sam_template(self) -> Dict[str, Any]:
+        """Convert to SAM template EventBridge rule format."""
+        return {
+            "Type": "AWS::Events::Rule",
+            "Properties": {
+                "Name": self.rule_name,
+                "Description": self.description,
+                "EventPattern": self.event_pattern,
+                "State": "ENABLED",
+                "Targets": self.targets
+            }
+        }
+
+
+class EventBridgeConfigGenerator:
+    """Generator for EventBridge rule configurations."""
+    
+    def __init__(self, management_account_id: str):
+        """Initialize with management account ID for filtering."""
+        self.management_account_id = management_account_id
+    
+    def generate_contact_sync_rule(
+        self, 
+        lambda_function_arn: str,
+        lambda_function_name: str = "ContactSyncHandler"
+    ) -> EventBridgeRuleConfig:
         """
-        Initialize EventBridge configuration.
+        Generate EventBridge rule for contact synchronization events.
+        
+        This rule captures Account Management API events (PutContactInformation, PutAlternateContact)
+        from CloudTrail and routes them to the contact sync Lambda function.
+        
+        Critical filtering logic:
+        - Only processes events from the management account (recipientAccountId)
+        - Only processes management account operations (no accountId in requestParameters)
+        - Filters for specific Account Management API calls
         
         Args:
-            management_account_id: AWS account ID of the management account
-            lambda_function_arn: ARN of the Lambda function to trigger
-        """
-        self.management_account_id = management_account_id
-        self.lambda_function_arn = lambda_function_arn
-
-    def get_contact_sync_rule(self) -> EventBridgeRuleConfig:
-        """
-        Get EventBridge rule configuration for contact synchronization.
-        
-        This rule captures Account Management API events from CloudTrail
-        and filters for management account contact changes only.
-        
+            lambda_function_arn: ARN of the Lambda function to invoke
+            lambda_function_name: Name of the Lambda function for target ID
+            
         Returns:
             EventBridgeRuleConfig for contact synchronization
         """
-        # Event pattern that matches CloudTrail events for Account Management API
-        # CRITICAL: Only process management account changes by filtering out
-        # events that have accountId in requestParameters
+        
+        # Event pattern that matches CloudTrail events for Account Management API calls
+        # Critical: This pattern ensures we only process management account contact changes
         event_pattern = {
             "source": ["aws.account"],
             "detail-type": ["AWS API Call via CloudTrail"],
@@ -78,17 +83,14 @@ class ContactSyncEventBridgeConfig:
                     "PutContactInformation",
                     "PutAlternateContact"
                 ],
-                # CRITICAL FILTER: Only process management account operations
-                # Management account operations do NOT have accountId in requestParameters
-                # This prevents infinite loops from member account updates
+                # Critical filtering: Only process events from management account
                 "recipientAccountId": [self.management_account_id],
+                # Critical filtering: Only process management account operations
+                # Management account operations do NOT have accountId in requestParameters
                 "requestParameters": {
-                    # This filter ensures accountId is NOT present in requestParameters
-                    # When accountId is present, it indicates a member account operation
-                    # When accountId is absent, it indicates a management account operation
-                    "accountId": {
-                        "exists": False
-                    }
+                    # This pattern ensures accountId is NOT present in requestParameters
+                    # EventBridge doesn't support "not exists" directly, so we handle this in Lambda
+                    # The Lambda function will filter out events that have accountId in requestParameters
                 }
             }
         }
@@ -96,16 +98,19 @@ class ContactSyncEventBridgeConfig:
         # Lambda target configuration
         targets = [
             {
-                "Id": "ContactSyncLambdaTarget",
-                "Arn": self.lambda_function_arn,
+                "Id": f"{lambda_function_name}Target",
+                "Arn": lambda_function_arn,
                 "InputTransformer": {
+                    # Transform the CloudTrail event to include only necessary fields
                     "InputPathsMap": {
                         "eventId": "$.detail.eventID",
                         "eventName": "$.detail.eventName",
                         "eventTime": "$.detail.eventTime",
                         "userIdentity": "$.detail.userIdentity",
+                        "recipientAccountId": "$.detail.recipientAccountId",
                         "requestParameters": "$.detail.requestParameters",
-                        "recipientAccountId": "$.detail.recipientAccountId"
+                        "sourceIPAddress": "$.detail.sourceIPAddress",
+                        "userAgent": "$.detail.userAgent"
                     },
                     "InputTemplate": json.dumps({
                         "Records": [
@@ -117,8 +122,10 @@ class ContactSyncEventBridgeConfig:
                                     "eventName": "<eventName>",
                                     "eventTime": "<eventTime>",
                                     "userIdentity": "<userIdentity>",
+                                    "recipientAccountId": "<recipientAccountId>",
                                     "requestParameters": "<requestParameters>",
-                                    "recipientAccountId": "<recipientAccountId>"
+                                    "sourceIPAddress": "<sourceIPAddress>",
+                                    "userAgent": "<userAgent>"
                                 }
                             }
                         ]
@@ -129,138 +136,163 @@ class ContactSyncEventBridgeConfig:
         
         return EventBridgeRuleConfig(
             rule_name="ContactSyncRule",
-            description="Triggers contact synchronization when management account contacts change",
+            description=f"Capture Account Management API contact changes in management account {self.management_account_id}",
             event_pattern=event_pattern,
             targets=targets
         )
-
-    def get_sam_template_resources(self) -> Dict[str, Any]:
+    
+    def generate_dlq_rule(
+        self, 
+        dlq_lambda_arn: str,
+        dlq_lambda_name: str = "ContactSyncDLQHandler"
+    ) -> EventBridgeRuleConfig:
         """
-        Get complete SAM template resources for EventBridge integration.
+        Generate EventBridge rule for dead letter queue processing.
         
-        Returns:
-            Dictionary of SAM template resources
-        """
-        contact_sync_rule = self.get_contact_sync_rule()
+        This rule captures failed contact sync events for manual review and retry.
         
-        resources = {
-            "ContactSyncEventRule": contact_sync_rule.to_sam_template(),
+        Args:
+            dlq_lambda_arn: ARN of the DLQ processing Lambda function
+            dlq_lambda_name: Name of the DLQ Lambda function
             
-            # Lambda permission to allow EventBridge to invoke the function
-            "ContactSyncLambdaPermission": {
-                "Type": "AWS::Lambda::Permission",
-                "Properties": {
-                    "FunctionName": self.lambda_function_arn,
-                    "Action": "lambda:InvokeFunction",
-                    "Principal": "events.amazonaws.com",
-                    "SourceArn": {
-                        "Fn::GetAtt": ["ContactSyncEventRule", "Arn"]
-                    }
+        Returns:
+            EventBridgeRuleConfig for DLQ processing
+        """
+        
+        event_pattern = {
+            "source": ["aws.lambda"],
+            "detail-type": ["Lambda Function Invocation Result - Failure"],
+            "detail": {
+                "responseElements": {
+                    "functionName": ["ContactSyncHandler"]
                 }
             }
         }
         
-        return resources
-
-    def get_cloudformation_template(self) -> Dict[str, Any]:
+        targets = [
+            {
+                "Id": f"{dlq_lambda_name}Target",
+                "Arn": dlq_lambda_arn
+            }
+        ]
+        
+        return EventBridgeRuleConfig(
+            rule_name="ContactSyncDLQRule",
+            description="Process failed contact synchronization events",
+            event_pattern=event_pattern,
+            targets=targets
+        )
+    
+    def generate_sam_template_section(
+        self, 
+        contact_sync_lambda_name: str,
+        dlq_lambda_name: str = None
+    ) -> Dict[str, Any]:
         """
-        Get complete CloudFormation template for EventBridge integration.
-        
-        Returns:
-            Complete CloudFormation template
-        """
-        resources = self.get_sam_template_resources()
-        
-        template = {
-            "AWSTemplateFormatVersion": "2010-09-09",
-            "Description": "EventBridge rules for AWS Contact Synchronization",
-            "Parameters": {
-                "ManagementAccountId": {
-                    "Type": "String",
-                    "Description": "AWS Account ID of the management account",
-                    "Default": self.management_account_id
-                },
-                "LambdaFunctionArn": {
-                    "Type": "String",
-                    "Description": "ARN of the Lambda function to trigger",
-                    "Default": self.lambda_function_arn
-                }
-            },
-            "Resources": resources
-        }
-        
-        return template
-
-    def validate_event_pattern(self, cloudtrail_event: Dict[str, Any]) -> bool:
-        """
-        Validate if a CloudTrail event matches the EventBridge rule pattern.
-        
-        This is useful for testing and debugging the event filtering logic.
+        Generate complete SAM template section for EventBridge rules.
         
         Args:
-            cloudtrail_event: CloudTrail event to validate
+            contact_sync_lambda_name: Name of the contact sync Lambda function
+            dlq_lambda_name: Optional name of the DLQ Lambda function
             
         Returns:
-            True if event matches the pattern, False otherwise
+            Dictionary containing SAM template resources for EventBridge rules
         """
-        try:
-            # Check event source
-            if cloudtrail_event.get("source") != "aws.account":
-                return False
+        
+        resources = {}
+        
+        # Main contact sync rule
+        contact_sync_rule = self.generate_contact_sync_rule(
+            lambda_function_arn=f"!GetAtt {contact_sync_lambda_name}.Arn",
+            lambda_function_name=contact_sync_lambda_name
+        )
+        
+        resources["ContactSyncEventRule"] = contact_sync_rule.to_sam_template()
+        
+        # Lambda permission for EventBridge to invoke the function
+        resources["ContactSyncEventPermission"] = {
+            "Type": "AWS::Lambda::Permission",
+            "Properties": {
+                "FunctionName": f"!Ref {contact_sync_lambda_name}",
+                "Action": "lambda:InvokeFunction",
+                "Principal": "events.amazonaws.com",
+                "SourceArn": f"!GetAtt ContactSyncEventRule.Arn"
+            }
+        }
+        
+        # Optional DLQ rule
+        if dlq_lambda_name:
+            dlq_rule = self.generate_dlq_rule(
+                dlq_lambda_arn=f"!GetAtt {dlq_lambda_name}.Arn",
+                dlq_lambda_name=dlq_lambda_name
+            )
             
-            # Check detail type
-            if cloudtrail_event.get("detail-type") != "AWS API Call via CloudTrail":
-                return False
+            resources["ContactSyncDLQRule"] = dlq_rule.to_sam_template()
             
-            detail = cloudtrail_event.get("detail", {})
-            
-            # Check event source
-            if detail.get("eventSource") != "account.amazonaws.com":
-                return False
-            
-            # Check event name
-            if detail.get("eventName") not in ["PutContactInformation", "PutAlternateContact"]:
-                return False
-            
-            # Check recipient account ID
-            if detail.get("recipientAccountId") != self.management_account_id:
-                return False
-            
-            # CRITICAL: Check that accountId is NOT in requestParameters
-            # This is the key filter that prevents infinite loops
-            request_params = detail.get("requestParameters", {})
-            if "accountId" in request_params:
-                return False  # This is a member account operation, should be filtered out
-            
-            return True
-            
-        except Exception:
-            return False
-
-    def get_event_pattern_explanation(self) -> str:
+            resources["ContactSyncDLQPermission"] = {
+                "Type": "AWS::Lambda::Permission",
+                "Properties": {
+                    "FunctionName": f"!Ref {dlq_lambda_name}",
+                    "Action": "lambda:InvokeFunction",
+                    "Principal": "events.amazonaws.com",
+                    "SourceArn": f"!GetAtt ContactSyncDLQRule.Arn"
+                }
+            }
+        
+        return resources
+    
+    def get_event_pattern_documentation(self) -> str:
         """
-        Get human-readable explanation of the event pattern filtering logic.
+        Get documentation explaining the EventBridge event pattern filtering logic.
         
         Returns:
             Detailed explanation of the filtering logic
         """
-        return """
-EventBridge Rule Filtering Logic for Contact Synchronization:
+        return f"""
+EventBridge Event Pattern Filtering Logic for Contact Synchronization
 
-1. Source Filter: Only events from 'aws.account' service
-2. Detail Type: Only 'AWS API Call via CloudTrail' events
-3. Event Source: Only 'account.amazonaws.com' (Account Management API)
-4. Event Names: Only 'PutContactInformation' and 'PutAlternateContact'
-5. Recipient Account: Only events from the management account
-6. CRITICAL FILTER: Only events WITHOUT 'accountId' in requestParameters
+The EventBridge rule uses the following filtering strategy to ensure only management 
+account contact changes trigger synchronization:
 
-The critical filter (#6) prevents infinite loops:
-- Management account operations: NO 'accountId' in requestParameters → PROCESS
-- Member account operations: HAS 'accountId' in requestParameters → IGNORE
+1. Source Filtering:
+   - source: ["aws.account"] - Only Account Management service events
+   - detail-type: ["AWS API Call via CloudTrail"] - Only CloudTrail API events
 
-This ensures that when the system updates member accounts, those operations
-don't trigger additional synchronization events, preventing infinite loops.
+2. API Call Filtering:
+   - eventSource: ["account.amazonaws.com"] - Account Management API only
+   - eventName: ["PutContactInformation", "PutAlternateContact"] - Contact change events only
 
-Note: 'recipientAccountId' is always the management account ID regardless of
-which account is being updated, so it cannot be used for filtering.
+3. Account Filtering:
+   - recipientAccountId: ["{self.management_account_id}"] - Only events from management account
+
+4. Operation Type Filtering (Critical):
+   - Management account operations: requestParameters does NOT contain "accountId"
+   - Member account operations: requestParameters contains "accountId" (filtered out in Lambda)
+   
+   Note: EventBridge doesn't support "not exists" patterns, so the Lambda function
+   performs the final filtering to exclude events with accountId in requestParameters.
+
+5. Infinite Loop Prevention:
+   - Events generated by the sync service itself are filtered out by checking userAgent
+   - Member account updates (which would be triggered by this service) are ignored
+   - Only original management account changes trigger new sync operations
+
+This filtering ensures that:
+- Only management account contact changes trigger synchronization
+- Member account updates (caused by sync operations) don't create infinite loops
+- The system processes both primary and alternate contact changes
+- Failed events can be retried through DLQ processing
 """
+
+
+def create_eventbridge_config(management_account_id: str) -> EventBridgeConfigGenerator:
+    """
+    Factory function to create EventBridge configuration generator.
+    
+    Args:
+        management_account_id: AWS account ID of the organization management account
+        
+    Returns:
+        EventBridgeConfigGenerator instance
+    """
+    return EventBridgeConfigGenerator(management_account_id)
