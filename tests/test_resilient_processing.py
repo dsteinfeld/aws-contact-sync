@@ -279,10 +279,12 @@ class TestResilientProcessingProperties:
             contact_event = ContactChangeEvent(
                 event_id="test-event-123",
                 event_time=datetime.utcnow(),
+                event_name="PutContactInformation" if contact_type.lower() == "primary" else "PutAlternateContact",
                 contact_type=contact_type,
                 source_account="123456789012",
                 initiating_user="test-user",
-                contact_data=contact_data
+                contact_data=contact_data,
+                is_management_account_change=True
             )
 
             # Process the contact change
