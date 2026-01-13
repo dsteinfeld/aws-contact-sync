@@ -60,11 +60,11 @@ This implementation plan breaks down the serverless AWS contact synchronization 
     - **Property 5: Comprehensive Audit Logging**
     - **Validates: Requirements 4.1, 4.2**
 
-- [-] 4. Checkpoint - Core infrastructure complete
+- [x] 4. Checkpoint - Core infrastructure complete
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 5. Implement contact change detection
-  - [ ] 5.1 Create CloudTrail event parser
+- [-] 5. Implement contact change detection
+  - [x] 5.1 Create CloudTrail event parser
     - Parse Account Management API events from CloudTrail
     - Extract contact change information and initiating user
     - Validate event structure and filter relevant events
@@ -72,7 +72,7 @@ This implementation plan breaks down the serverless AWS contact synchronization 
     - Implement logic to distinguish management account vs member account operations
     - _Requirements: 1.1, 1.2, 1.3_
 
-  - [ ] 5.2 Write property test for change detection
+  - [-] 5.2 Write property test for change detection
     - **Property 1: Contact Change Detection Timing**
     - **Validates: Requirements 1.1, 1.2, 1.3**
 
