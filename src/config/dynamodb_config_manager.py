@@ -3,7 +3,7 @@
 import json
 import boto3
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from botocore.exceptions import ClientError, BotoCoreError
 from .config_manager import SyncConfig, ConfigManager
 
