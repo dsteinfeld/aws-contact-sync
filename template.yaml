@@ -1,0 +1,610 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: 'AWS Contact Synchronization System - Serverless application for synchronizing contact information across AWS organization accounts'
+
+Parameters:
+  ManagementAccountId:
+    Type: String
+    Description: AWS Organization Management Account ID
+    AllowedPattern: '[0-9]{12}'
+    ConstraintDescription: Must be a valid 12-digit AWS account ID
+  
+  Environment:
+    Type: String
+    Default: prod
+    AllowedValues: [dev, staging, prod]
+    Description: Deployment environment
+  
+  NotificationEmail:
+    Type: String
+    Description: Email address for system notifications
+    Default: ''
+  
+  LogRetentionDays:
+    Type: Number
+    Default: 90
+    Description: CloudWatch log retention period in days
+    AllowedValues: [1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653]
+
+Globals:
+  Function:
+    Runtime: python3.9
+    Timeout: 300
+    MemorySize: 512
+    Environment:
+      Variables:
+        MANAGEMENT_ACCOUNT_ID: !Ref ManagementAccountId
+        CONFIG_TABLE_NAME: !Ref ConfigTable
+        STATE_TABLE_NAME: !Ref StateTable
+        ENVIRONMENT: !Ref Environment
+        LOG_LEVEL: INFO
+    Layers:
+      - !Ref DependenciesLayer
+
+Resources:
+  # Lambda Layer for Dependencies
+  DependenciesLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: !Sub '${AWS::StackName}-dependencies'
+      Description: 'Dependencies layer for AWS Contact Sync'
+      ContentUri: dependencies/
+      CompatibleRuntimes:
+        - python3.9
+      RetentionPolicy: Delete
+    Metadata:
+      BuildMethod: python3.9
+
+  # Main Contact Sync Handler Lambda Function
+  ContactSyncHandler:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-contact-sync-handler'
+      Description: 'Main orchestrator for contact synchronization operations'
+      CodeUri: src/
+      Handler: lambda_handlers.contact_sync_handler.lambda_handler
+      Environment:
+        Variables:
+          ACCOUNT_PROCESSOR_FUNCTION_NAME: !Ref AccountProcessorHandler
+          NOTIFICATION_FUNCTION_NAME: !Ref NotificationHandler
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - organizations:ListAccounts
+                - organizations:DescribeAccount
+              Resource: '*'
+            - Effect: Allow
+              Action:
+                - account:GetContactInformation
+                - account:GetAlternateContact
+              Resource: '*'
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+                - dynamodb:UpdateItem
+                - dynamodb:Query
+                - dynamodb:Scan
+              Resource:
+                - !GetAtt ConfigTable.Arn
+                - !GetAtt StateTable.Arn
+                - !Sub '${ConfigTable.Arn}/index/*'
+                - !Sub '${StateTable.Arn}/index/*'
+            - Effect: Allow
+              Action:
+                - lambda:InvokeFunction
+              Resource:
+                - !GetAtt AccountProcessorHandler.Arn
+                - !GetAtt NotificationHandler.Arn
+            - Effect: Allow
+              Action:
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*'
+      Events:
+        ContactChangeEvent:
+          Type: EventBridgeRule
+          Properties:
+            Pattern:
+              source: ['aws.account']
+              detail-type: ['AWS API Call via CloudTrail']
+              detail:
+                eventSource: ['account.amazonaws.com']
+                eventName: ['PutContactInformation', 'PutAlternateContact']
+                recipientAccountId: [!Ref ManagementAccountId]
+      DeadLetterQueue:
+        Type: SQS
+        TargetArn: !GetAtt ContactSyncDLQ.Arn
+
+  # Account Processor Handler Lambda Function
+  AccountProcessorHandler:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-account-processor-handler'
+      Description: 'Processes individual member account contact updates'
+      CodeUri: src/
+      Handler: lambda_handlers.account_processor_handler.lambda_handler
+      Timeout: 900  # 15 minutes for retry logic
+      Environment:
+        Variables:
+          NOTIFICATION_FUNCTION_NAME: !Ref NotificationHandler
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - organizations:ListAccounts
+                - organizations:DescribeAccount
+              Resource: '*'
+            - Effect: Allow
+              Action:
+                - account:GetContactInformation
+                - account:PutContactInformation
+                - account:GetAlternateContact
+                - account:PutAlternateContact
+              Resource: '*'
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+                - dynamodb:UpdateItem
+                - dynamodb:Query
+              Resource:
+                - !GetAtt StateTable.Arn
+                - !Sub '${StateTable.Arn}/index/*'
+            - Effect: Allow
+              Action:
+                - lambda:InvokeFunction
+              Resource: !GetAtt NotificationHandler.Arn
+            - Effect: Allow
+              Action:
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*'
+      ReservedConcurrencyLimit: 10  # Limit concurrent executions to avoid API throttling
+
+  # Notification Handler Lambda Function
+  NotificationHandler:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-notification-handler'
+      Description: 'Handles notification delivery for sync operations'
+      CodeUri: src/
+      Handler: lambda_handlers.notification_handler.lambda_handler
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:Query
+              Resource:
+                - !GetAtt ConfigTable.Arn
+                - !Sub '${ConfigTable.Arn}/index/*'
+            - Effect: Allow
+              Action:
+                - sns:Publish
+              Resource: !Ref NotificationTopic
+            - Effect: Allow
+              Action:
+                - notifications:SendUserNotification
+                - notifications:GetNotificationConfiguration
+                - notifications:ListNotificationHubs
+              Resource: '*'
+            - Effect: Allow
+              Action:
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*'
+
+  # DynamoDB Table for Configuration Management
+  ConfigTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${AWS::StackName}-config'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: config_key
+          AttributeType: S
+      KeySchema:
+        - AttributeName: config_key
+          KeyType: HASH
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+      Tags:
+        - Key: Application
+          Value: aws-contact-sync
+        - Key: Environment
+          Value: !Ref Environment
+
+  # DynamoDB Table for State Tracking
+  StateTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${AWS::StackName}-state'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: sync_id
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: S
+        - AttributeName: status
+          AttributeType: S
+      KeySchema:
+        - AttributeName: sync_id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: timestamp-index
+          KeySchema:
+            - AttributeName: timestamp
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        - IndexName: status-timestamp-index
+          KeySchema:
+            - AttributeName: status
+              KeyType: HASH
+            - AttributeName: timestamp
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+      Tags:
+        - Key: Application
+          Value: aws-contact-sync
+        - Key: Environment
+          Value: !Ref Environment
+
+  # SNS Topic for Fallback Notifications
+  NotificationTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub '${AWS::StackName}-notifications'
+      DisplayName: 'AWS Contact Sync Notifications'
+      KmsMasterKeyId: alias/aws/sns
+
+  # SNS Subscription for Email Notifications (if email provided)
+  NotificationSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasNotificationEmail
+    Properties:
+      Protocol: email
+      TopicArn: !Ref NotificationTopic
+      Endpoint: !Ref NotificationEmail
+
+  # Dead Letter Queue for Failed Events
+  ContactSyncDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${AWS::StackName}-dlq'
+      MessageRetentionPeriod: 1209600  # 14 days
+      VisibilityTimeoutSeconds: 300
+      KmsMasterKeyId: alias/aws/sqs
+
+  # CloudWatch Log Groups with Retention
+  ContactSyncHandlerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ContactSyncHandler}'
+      RetentionInDays: !Ref LogRetentionDays
+
+  AccountProcessorHandlerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${AccountProcessorHandler}'
+      RetentionInDays: !Ref LogRetentionDays
+
+  NotificationHandlerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${NotificationHandler}'
+      RetentionInDays: !Ref LogRetentionDays
+
+  # CloudWatch Alarms for Monitoring
+  ContactSyncErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-contact-sync-errors'
+      AlarmDescription: 'Contact sync handler errors'
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref ContactSyncHandler
+      AlarmActions:
+        - !Ref NotificationTopic
+
+  AccountProcessorErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-account-processor-errors'
+      AlarmDescription: 'Account processor handler errors'
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 5
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref AccountProcessorHandler
+      AlarmActions:
+        - !Ref NotificationTopic
+
+  DLQMessageAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-dlq-messages'
+      AlarmDescription: 'Messages in dead letter queue'
+      MetricName: ApproximateNumberOfVisibleMessages
+      Namespace: AWS/SQS
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt ContactSyncDLQ.QueueName
+      AlarmActions:
+        - !Ref NotificationTopic
+
+  # CloudWatch Dashboard for Monitoring
+  ContactSyncDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub '${AWS::StackName}-dashboard'
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 0,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "AWS/Lambda", "Invocations", "FunctionName", "${ContactSyncHandler}" ],
+                  [ ".", "Errors", ".", "." ],
+                  [ ".", "Duration", ".", "." ]
+                ],
+                "period": 300,
+                "stat": "Sum",
+                "region": "${AWS::Region}",
+                "title": "Contact Sync Handler Metrics"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 0,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "AWS/Lambda", "Invocations", "FunctionName", "${AccountProcessorHandler}" ],
+                  [ ".", "Errors", ".", "." ],
+                  [ ".", "Duration", ".", "." ]
+                ],
+                "period": 300,
+                "stat": "Sum",
+                "region": "${AWS::Region}",
+                "title": "Account Processor Handler Metrics"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 6,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "AWS/DynamoDB", "ConsumedReadCapacityUnits", "TableName", "${ConfigTable}" ],
+                  [ ".", "ConsumedWriteCapacityUnits", ".", "." ]
+                ],
+                "period": 300,
+                "stat": "Sum",
+                "region": "${AWS::Region}",
+                "title": "Config Table Metrics"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 6,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "AWS/DynamoDB", "ConsumedReadCapacityUnits", "TableName", "${StateTable}" ],
+                  [ ".", "ConsumedWriteCapacityUnits", ".", "." ]
+                ],
+                "period": 300,
+                "stat": "Sum",
+                "region": "${AWS::Region}",
+                "title": "State Table Metrics"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 12,
+              "width": 24,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "AWS/SQS", "ApproximateNumberOfVisibleMessages", "QueueName", "${ContactSyncDLQ}" ]
+                ],
+                "period": 300,
+                "stat": "Average",
+                "region": "${AWS::Region}",
+                "title": "Dead Letter Queue Messages"
+              }
+            }
+          ]
+        }
+
+  # IAM Role for CloudTrail (if not already exists)
+  CloudTrailRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AWS::StackName}-cloudtrail-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudtrail.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CloudTrailLogsPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/cloudtrail/*'
+
+  # CloudTrail for Account Management API Events
+  AccountManagementCloudTrail:
+    Type: AWS::CloudTrail::Trail
+    Properties:
+      TrailName: !Sub '${AWS::StackName}-account-management-trail'
+      S3BucketName: !Ref CloudTrailBucket
+      S3KeyPrefix: 'account-management-events/'
+      IncludeGlobalServiceEvents: true
+      IsMultiRegionTrail: true
+      EnableLogFileValidation: true
+      CloudWatchLogsLogGroupArn: !Sub '${CloudTrailLogGroup.Arn}:*'
+      CloudWatchLogsRoleArn: !GetAtt CloudTrailRole.Arn
+      EventSelectors:
+        - ReadWriteType: WriteOnly
+          IncludeManagementEvents: true
+          DataResources:
+            - Type: 'AWS::Account::*'
+              Values: ['*']
+
+  # S3 Bucket for CloudTrail Logs
+  CloudTrailBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${AWS::StackName}-cloudtrail-${AWS::AccountId}-${AWS::Region}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldLogs
+            Status: Enabled
+            ExpirationInDays: !Ref LogRetentionDays
+
+  # S3 Bucket Policy for CloudTrail
+  CloudTrailBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref CloudTrailBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AWSCloudTrailAclCheck
+            Effect: Allow
+            Principal:
+              Service: cloudtrail.amazonaws.com
+            Action: s3:GetBucketAcl
+            Resource: !GetAtt CloudTrailBucket.Arn
+          - Sid: AWSCloudTrailWrite
+            Effect: Allow
+            Principal:
+              Service: cloudtrail.amazonaws.com
+            Action: s3:PutObject
+            Resource: !Sub '${CloudTrailBucket.Arn}/*'
+            Condition:
+              StringEquals:
+                's3:x-amz-acl': bucket-owner-full-control
+
+  # CloudWatch Log Group for CloudTrail
+  CloudTrailLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/cloudtrail/${AWS::StackName}'
+      RetentionInDays: !Ref LogRetentionDays
+
+Conditions:
+  HasNotificationEmail: !Not [!Equals [!Ref NotificationEmail, '']]
+
+Outputs:
+  ContactSyncHandlerArn:
+    Description: 'ARN of the Contact Sync Handler Lambda function'
+    Value: !GetAtt ContactSyncHandler.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-ContactSyncHandlerArn'
+
+  AccountProcessorHandlerArn:
+    Description: 'ARN of the Account Processor Handler Lambda function'
+    Value: !GetAtt AccountProcessorHandler.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-AccountProcessorHandlerArn'
+
+  NotificationHandlerArn:
+    Description: 'ARN of the Notification Handler Lambda function'
+    Value: !GetAtt NotificationHandler.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-NotificationHandlerArn'
+
+  ConfigTableName:
+    Description: 'Name of the Configuration DynamoDB table'
+    Value: !Ref ConfigTable
+    Export:
+      Name: !Sub '${AWS::StackName}-ConfigTableName'
+
+  StateTableName:
+    Description: 'Name of the State Tracking DynamoDB table'
+    Value: !Ref StateTable
+    Export:
+      Name: !Sub '${AWS::StackName}-StateTableName'
+
+  NotificationTopicArn:
+    Description: 'ARN of the SNS notification topic'
+    Value: !Ref NotificationTopic
+    Export:
+      Name: !Sub '${AWS::StackName}-NotificationTopicArn'
+
+  DashboardURL:
+    Description: 'URL of the CloudWatch dashboard'
+    Value: !Sub 'https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=${ContactSyncDashboard}'
+
+  CloudTrailArn:
+    Description: 'ARN of the CloudTrail for Account Management events'
+    Value: !GetAtt AccountManagementCloudTrail.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-CloudTrailArn'
