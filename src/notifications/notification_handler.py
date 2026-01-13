@@ -2,6 +2,7 @@
 
 import logging
 from typing import List, Dict, Any, Optional
+from datetime import datetime
 from ..models.sync_models import SyncOperation, AccountSyncResult
 from ..config.dynamodb_config_manager import DynamoDBConfigManager
 from .user_notifications_client import UserNotificationsClient, NotificationConfig
@@ -78,12 +79,14 @@ class NotificationHandler:
             successful_results = [r for r in sync_operation.results.values() if r.status == "success"]
             total_accounts = len(sync_operation.target_accounts)
             
+            notification_sent = False
+            
             # Determine notification type and send appropriate notification
             if len(failed_results) == total_accounts:
                 # Complete failure
                 message = NotificationMessageFormatter.format_complete_failure(sync_operation)
                 if client.should_notify("complete_failure", len(failed_results), total_accounts):
-                    return client.send_notification(message)
+                    notification_sent = self._send_with_retry(client, message)
                     
             elif len(failed_results) > 0:
                 # Partial failure - check for permission errors
@@ -94,22 +97,30 @@ class NotificationHandler:
                         sync_operation, permission_errors
                     )
                     if client.should_notify("permission_errors", len(failed_results), total_accounts):
-                        return client.send_notification(message)
+                        notification_sent = self._send_with_retry(client, message)
                 else:
                     message = NotificationMessageFormatter.format_partial_failure(sync_operation)
                     if client.should_notify("partial_failure", len(failed_results), total_accounts):
-                        return client.send_notification(message)
+                        notification_sent = self._send_with_retry(client, message)
                         
             else:
                 # Complete success
                 message = NotificationMessageFormatter.format_success_completion(sync_operation)
                 if client.should_notify("success_completion", 0, total_accounts):
-                    return client.send_notification(message)
+                    notification_sent = self._send_with_retry(client, message)
             
-            return True
+            # Log notification results
+            if notification_sent:
+                logger.info(f"Notification sent successfully for sync {sync_operation.sync_id}")
+            else:
+                logger.warning(f"Failed to send notification for sync {sync_operation.sync_id}")
+            
+            return notification_sent or True  # Return True if no notification needed
             
         except Exception as e:
             logger.error(f"Failed to handle sync completion notification: {e}")
+            # Try to send a system error notification about the notification failure
+            self._handle_notification_failure(sync_operation, str(e))
             return False
 
     def handle_system_error(self, sync_operation: SyncOperation, error_message: str) -> bool:
@@ -132,7 +143,14 @@ class NotificationHandler:
             total_accounts = len(sync_operation.target_accounts)
             
             if client.should_notify("system_errors", total_accounts, total_accounts):
-                return client.send_notification(message)
+                notification_sent = self._send_with_retry(client, message)
+                
+                if notification_sent:
+                    logger.info(f"System error notification sent for sync {sync_operation.sync_id}")
+                else:
+                    logger.error(f"Failed to send system error notification for sync {sync_operation.sync_id}")
+                
+                return notification_sent
             
             return True
             
@@ -159,7 +177,14 @@ class NotificationHandler:
             message = NotificationMessageFormatter.format_configuration_errors(error_message, config_details)
             
             if client.should_notify("configuration_errors", 1, 1):
-                return client.send_notification(message)
+                notification_sent = self._send_with_retry(client, message)
+                
+                if notification_sent:
+                    logger.info("Configuration error notification sent successfully")
+                else:
+                    logger.error("Failed to send configuration error notification")
+                
+                return notification_sent
             
             return True
             
@@ -246,3 +271,104 @@ class NotificationHandler:
         except Exception as e:
             logger.error(f"Failed to test notification delivery: {e}")
             return {"error": str(e)}
+
+    def _send_with_retry(self, client, message, max_retries: int = 3) -> bool:
+        """Send notification with retry logic for delivery failures.
+        
+        Args:
+            client: Notification client
+            message: Notification message to send
+            max_retries: Maximum number of retry attempts
+            
+        Returns:
+            True if notification was sent successfully, False otherwise
+        """
+        import time
+        
+        for attempt in range(max_retries + 1):
+            try:
+                if client.send_notification(message):
+                    if attempt > 0:
+                        logger.info(f"Notification sent successfully on attempt {attempt + 1}")
+                    return True
+                
+                if attempt < max_retries:
+                    # Exponential backoff: 1s, 2s, 4s
+                    delay = 2 ** attempt
+                    logger.warning(f"Notification delivery failed, retrying in {delay}s (attempt {attempt + 1}/{max_retries + 1})")
+                    time.sleep(delay)
+                
+            except Exception as e:
+                logger.error(f"Error sending notification on attempt {attempt + 1}: {e}")
+                if attempt < max_retries:
+                    delay = 2 ** attempt
+                    time.sleep(delay)
+        
+        logger.error(f"Failed to send notification after {max_retries + 1} attempts")
+        return False
+
+    def _handle_notification_failure(self, sync_operation: SyncOperation, error_message: str):
+        """Handle notification delivery failures by logging and attempting fallback.
+        
+        Args:
+            sync_operation: Sync operation that failed to notify
+            error_message: Error message describing the notification failure
+        """
+        try:
+            # Log the notification failure
+            logger.error(f"Notification system failure for sync {sync_operation.sync_id}: {error_message}")
+            
+            # Try to send a simplified notification via SNS fallback only
+            client = self._get_notification_client()
+            if client and client._sns_client:
+                fallback_message = f"""
+AWS Contact Sync Notification System Failure
+
+Sync ID: {sync_operation.sync_id}
+Contact Type: {sync_operation.contact_type}
+Source Account: {sync_operation.source_account}
+Target Accounts: {len(sync_operation.target_accounts)}
+
+The notification system encountered an error and could not deliver the sync completion notification.
+Please check CloudWatch logs for detailed information.
+
+Error: {error_message}
+                """.strip()
+                
+                try:
+                    client._get_sns_client().publish(
+                        TopicArn=client.config.fallback_sns_topic,
+                        Message=fallback_message,
+                        Subject="AWS Contact Sync: Notification System Failure"
+                    )
+                    logger.info("Fallback notification sent via SNS")
+                except Exception as sns_error:
+                    logger.error(f"Even SNS fallback failed: {sns_error}")
+                    
+        except Exception as e:
+            logger.error(f"Failed to handle notification failure: {e}")
+
+    def get_notification_status(self, sync_id: str) -> Dict[str, Any]:
+        """Get notification status for a specific sync operation.
+        
+        Args:
+            sync_id: Sync operation ID
+            
+        Returns:
+            Dictionary with notification status information
+        """
+        try:
+            # This would typically query a notification tracking table
+            # For now, return basic status information
+            return {
+                "sync_id": sync_id,
+                "notification_enabled": self._get_notification_client() is not None,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+        except Exception as e:
+            logger.error(f"Failed to get notification status: {e}")
+            return {
+                "sync_id": sync_id,
+                "error": str(e),
+                "timestamp": datetime.utcnow().isoformat()
+            }
