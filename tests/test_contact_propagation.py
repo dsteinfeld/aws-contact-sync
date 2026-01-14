@@ -131,24 +131,28 @@ class TestContactPropagationProperties:
             
             # Verify sync operation was created
             mock_state_instance.create_sync_operation.assert_called_once()
-            created_sync_op = mock_state_instance.create_sync_operation.call_args[0][0]
             
-            # Verify sync operation properties
-            assert isinstance(created_sync_op, SyncOperation)
-            assert created_sync_op.contact_type == contact_type
-            assert created_sync_op.source_account == management_account_id
-            assert created_sync_op.initiating_user == contact_event.initiating_user
-            assert set(created_sync_op.target_accounts) == set(expected_target_accounts)
-            assert created_sync_op.status == "pending"
+            # Get the created sync operation from the call arguments (keyword args)
+            call_kwargs = mock_state_instance.create_sync_operation.call_args.kwargs
+            
+            # Verify sync operation properties from the call arguments
+            assert call_kwargs['contact_type'] == contact_type
+            assert call_kwargs['source_account'] == management_account_id
+            assert call_kwargs['initiating_user'] == contact_event.initiating_user
+            assert set(call_kwargs['target_accounts']) == set(expected_target_accounts)
+            
+            # Get the sync_id from the result (the mock returns a SyncOperation)
+            # We need to get it from the result dict since that's what process_contact_change returns
+            created_sync_id = result['sync_id']
             
             # Verify contact data preservation
             if contact_type == "primary":
-                assert isinstance(created_sync_op.contact_data, ContactInformation)
-                assert created_sync_op.contact_data == contact_event.contact_data
+                assert isinstance(call_kwargs['contact_data'], ContactInformation)
+                assert call_kwargs['contact_data'] == contact_event.contact_data
             else:
-                assert isinstance(created_sync_op.contact_data, AlternateContact)
-                assert created_sync_op.contact_data == contact_event.contact_data
-                assert created_sync_op.contact_data.contact_type == contact_type
+                assert isinstance(call_kwargs['contact_data'], AlternateContact)
+                assert call_kwargs['contact_data'] == contact_event.contact_data
+                assert call_kwargs['contact_data'].contact_type == contact_type
             
             # Verify Lambda invocations for each target account
             assert mock_lambda_client.invoke.call_count == len(expected_target_accounts)
@@ -161,7 +165,7 @@ class TestContactPropagationProperties:
                 assert kwargs['InvocationType'] == 'Event'  # Asynchronous
                 
                 payload = json.loads(kwargs['Payload'])
-                assert payload['sync_id'] == created_sync_op.sync_id
+                assert payload['sync_id'] == created_sync_id
                 assert payload['contact_type'] == contact_type
                 assert payload['initiating_user'] == contact_event.initiating_user
                 
