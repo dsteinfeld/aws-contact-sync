@@ -75,10 +75,27 @@ class TestContactPropagationProperties:
             mock_config_instance.should_sync_contact_type.return_value = True
             mock_config_instance.is_account_excluded.side_effect = lambda acc_id: acc_id in excluded_account_ids
             
-            # Setup State tracker mock - return the sync operation as-is
+            # Setup State tracker mock - return a proper SyncOperation
             mock_state_instance = Mock()
             mock_state_tracker.return_value = mock_state_instance
-            mock_state_instance.create_sync_operation.side_effect = lambda sync_op: sync_op
+            
+            def create_sync_op_mock(**kwargs):
+                """Mock that creates a SyncOperation from keyword arguments."""
+                from src.models.sync_models import SyncOperation
+                import uuid
+                return SyncOperation(
+                    sync_id=str(uuid.uuid4()),
+                    timestamp=datetime.utcnow(),
+                    initiating_user=kwargs.get('initiating_user', 'test-user'),
+                    contact_type=kwargs.get('contact_type', 'primary'),
+                    source_account=kwargs.get('source_account', management_account_id),
+                    target_accounts=kwargs.get('target_accounts', []),
+                    status='pending',
+                    contact_data=kwargs.get('contact_data'),
+                    results={}
+                )
+            
+            mock_state_instance.create_sync_operation.side_effect = create_sync_op_mock
             mock_state_instance.update_sync_status.return_value = None
             
             # Setup Lambda client mock
@@ -218,10 +235,27 @@ class TestContactPropagationProperties:
             mock_config_instance.should_sync_contact_type.return_value = sync_all_contact_types
             mock_config_instance.is_account_excluded.return_value = False  # No exclusions
             
-            # Setup State tracker mock - return the sync operation as-is
+            # Setup State tracker mock - return a proper SyncOperation
             mock_state_instance = Mock()
             mock_state_tracker.return_value = mock_state_instance
-            mock_state_instance.create_sync_operation.side_effect = lambda sync_op: sync_op
+            
+            def create_sync_op_mock(**kwargs):
+                """Mock that creates a SyncOperation from keyword arguments."""
+                from src.models.sync_models import SyncOperation
+                import uuid
+                return SyncOperation(
+                    sync_id=str(uuid.uuid4()),
+                    timestamp=datetime.utcnow(),
+                    initiating_user=kwargs.get('initiating_user', 'test-user'),
+                    contact_type=kwargs.get('contact_type', 'primary'),
+                    source_account=kwargs.get('source_account', management_account_id),
+                    target_accounts=kwargs.get('target_accounts', []),
+                    status='pending',
+                    contact_data=kwargs.get('contact_data'),
+                    results={}
+                )
+            
+            mock_state_instance.create_sync_operation.side_effect = create_sync_op_mock
             mock_state_instance.update_sync_status.return_value = None
             
             mock_lambda_client = Mock()
