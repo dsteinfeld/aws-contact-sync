@@ -45,6 +45,7 @@ OPTIONS:
     -e, --environment ENV       Environment to rollback (dev, staging, prod) [default: prod]
     -r, --region REGION         AWS region [default: us-east-1]
     -s, --stack-name NAME       CloudFormation stack name [default: aws-contact-sync]
+    -p, --profile PROFILE       AWS CLI profile name [default: default]
     --force                     Force rollback without confirmation
     --delete                    Delete the entire stack instead of rollback
     --backup-data               Backup DynamoDB data before rollback
@@ -54,8 +55,8 @@ EXAMPLES:
     # Rollback to previous version
     $0 --environment prod
 
-    # Force rollback without confirmation
-    $0 --environment prod --force
+    # Force rollback without confirmation with specific profile
+    $0 --environment prod --force --profile my-aws-profile
 
     # Delete entire stack with data backup
     $0 --environment dev --delete --backup-data
@@ -67,6 +68,7 @@ EOF
 ENVIRONMENT="prod"
 REGION="$DEFAULT_REGION"
 STACK_NAME="aws-contact-sync"
+AWS_PROFILE=""
 FORCE=false
 DELETE_STACK=false
 BACKUP_DATA=false
@@ -83,6 +85,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         -s|--stack-name)
             STACK_NAME="$2"
+            shift 2
+            ;;
+        -p|--profile)
+            AWS_PROFILE="$2"
             shift 2
             ;;
         --force)
@@ -111,11 +117,17 @@ done
 
 FULL_STACK_NAME="$STACK_NAME-$ENVIRONMENT"
 
+# Set up AWS CLI profile if specified
+AWS_CLI_OPTS=()
+if [[ -n "$AWS_PROFILE" ]]; then
+    AWS_CLI_OPTS+=("--profile" "$AWS_PROFILE")
+fi
+
 # Validation functions
 validate_stack_exists() {
     log_info "Checking if stack exists..."
     
-    if ! aws cloudformation describe-stacks --stack-name "$FULL_STACK_NAME" --region "$REGION" &> /dev/null; then
+    if ! aws "${AWS_CLI_OPTS[@]}" cloudformation describe-stacks --stack-name "$FULL_STACK_NAME" --region "$REGION" &> /dev/null; then
         log_error "Stack $FULL_STACK_NAME does not exist in region $REGION"
         exit 1
     fi
@@ -124,7 +136,7 @@ validate_stack_exists() {
 }
 
 get_stack_status() {
-    aws cloudformation describe-stacks \
+    aws "${AWS_CLI_OPTS[@]}" cloudformation describe-stacks \
         --stack-name "$FULL_STACK_NAME" \
         --region "$REGION" \
         --query 'Stacks[0].StackStatus' \
@@ -138,13 +150,13 @@ backup_dynamodb_data() {
     mkdir -p "$backup_dir"
     
     # Get table names from stack
-    local config_table=$(aws cloudformation describe-stacks \
+    local config_table=$(aws "${AWS_CLI_OPTS[@]}" cloudformation describe-stacks \
         --stack-name "$FULL_STACK_NAME" \
         --region "$REGION" \
         --query 'Stacks[0].Outputs[?OutputKey==`ConfigTableName`].OutputValue' \
         --output text)
     
-    local state_table=$(aws cloudformation describe-stacks \
+    local state_table=$(aws "${AWS_CLI_OPTS[@]}" cloudformation describe-stacks \
         --stack-name "$FULL_STACK_NAME" \
         --region "$REGION" \
         --query 'Stacks[0].Outputs[?OutputKey==`StateTableName`].OutputValue' \
@@ -153,7 +165,7 @@ backup_dynamodb_data() {
     # Backup configuration table
     if [[ -n "$config_table" && "$config_table" != "None" ]]; then
         log_info "Backing up configuration table: $config_table"
-        aws dynamodb scan \
+        aws "${AWS_CLI_OPTS[@]}" dynamodb scan \
             --table-name "$config_table" \
             --region "$REGION" \
             --output json > "$backup_dir/config-table-backup.json"
@@ -165,7 +177,7 @@ backup_dynamodb_data() {
         log_info "Backing up state table: $state_table (last 7 days)"
         local seven_days_ago=$(date -d '7 days ago' -u +%Y-%m-%dT%H:%M:%SZ)
         
-        aws dynamodb scan \
+        aws "${AWS_CLI_OPTS[@]}" dynamodb scan \
             --table-name "$state_table" \
             --region "$REGION" \
             --filter-expression "attribute_exists(#ts) AND #ts >= :timestamp" \
@@ -228,18 +240,18 @@ rollback_stack() {
     case "$stack_status" in
         "UPDATE_IN_PROGRESS")
             log_info "Stack update in progress, cancelling update..."
-            aws cloudformation cancel-update-stack \
+            aws "${AWS_CLI_OPTS[@]}" cloudformation cancel-update-stack \
                 --stack-name "$FULL_STACK_NAME" \
                 --region "$REGION"
             
             log_info "Waiting for update cancellation..."
-            aws cloudformation wait stack-update-complete \
+            aws "${AWS_CLI_OPTS[@]}" cloudformation wait stack-update-complete \
                 --stack-name "$FULL_STACK_NAME" \
                 --region "$REGION" || true
             ;;
         "UPDATE_ROLLBACK_FAILED"|"UPDATE_ROLLBACK_IN_PROGRESS")
             log_info "Continuing rollback from failed state..."
-            aws cloudformation continue-update-rollback \
+            aws "${AWS_CLI_OPTS[@]}" cloudformation continue-update-rollback \
                 --stack-name "$FULL_STACK_NAME" \
                 --region "$REGION"
             ;;
@@ -257,7 +269,7 @@ rollback_stack() {
     esac
     
     log_info "Waiting for rollback to complete..."
-    aws cloudformation wait stack-update-complete \
+    aws "${AWS_CLI_OPTS[@]}" cloudformation wait stack-update-complete \
         --stack-name "$FULL_STACK_NAME" \
         --region "$REGION"
     
@@ -274,18 +286,18 @@ delete_stack() {
     log_info "Deleting stack..."
     
     # Disable termination protection if enabled
-    aws cloudformation update-termination-protection \
+    aws "${AWS_CLI_OPTS[@]}" cloudformation update-termination-protection \
         --stack-name "$FULL_STACK_NAME" \
         --region "$REGION" \
         --no-enable-termination-protection || true
     
     # Delete the stack
-    aws cloudformation delete-stack \
+    aws "${AWS_CLI_OPTS[@]}" cloudformation delete-stack \
         --stack-name "$FULL_STACK_NAME" \
         --region "$REGION"
     
     log_info "Waiting for stack deletion to complete..."
-    aws cloudformation wait stack-delete-complete \
+    aws "${AWS_CLI_OPTS[@]}" cloudformation wait stack-delete-complete \
         --stack-name "$FULL_STACK_NAME" \
         --region "$REGION"
     
@@ -296,20 +308,20 @@ cleanup_resources() {
     log_info "Cleaning up remaining resources..."
     
     # Clean up any remaining S3 buckets (CloudTrail logs)
-    local buckets=$(aws s3api list-buckets \
+    local buckets=$(aws "${AWS_CLI_OPTS[@]}" s3api list-buckets \
         --query "Buckets[?contains(Name, '$STACK_NAME-$ENVIRONMENT')].Name" \
         --output text)
     
     for bucket in $buckets; do
         if [[ -n "$bucket" ]]; then
             log_info "Cleaning up S3 bucket: $bucket"
-            aws s3 rm "s3://$bucket" --recursive || true
-            aws s3api delete-bucket --bucket "$bucket" --region "$REGION" || true
+            aws "${AWS_CLI_OPTS[@]}" s3 rm "s3://$bucket" --recursive || true
+            aws "${AWS_CLI_OPTS[@]}" s3api delete-bucket --bucket "$bucket" --region "$REGION" || true
         fi
     done
     
     # Clean up any remaining log groups
-    local log_groups=$(aws logs describe-log-groups \
+    local log_groups=$(aws "${AWS_CLI_OPTS[@]}" logs describe-log-groups \
         --log-group-name-prefix "/aws/lambda/$FULL_STACK_NAME" \
         --region "$REGION" \
         --query 'logGroups[*].logGroupName' \
@@ -318,7 +330,7 @@ cleanup_resources() {
     for log_group in $log_groups; do
         if [[ -n "$log_group" ]]; then
             log_info "Cleaning up log group: $log_group"
-            aws logs delete-log-group --log-group-name "$log_group" --region "$REGION" || true
+            aws "${AWS_CLI_OPTS[@]}" logs delete-log-group --log-group-name "$log_group" --region "$REGION" || true
         fi
     done
     
@@ -353,6 +365,9 @@ main() {
     log_info "Environment: $ENVIRONMENT"
     log_info "Region: $REGION"
     log_info "Stack: $FULL_STACK_NAME"
+    if [[ -n "$AWS_PROFILE" ]]; then
+        log_info "AWS Profile: $AWS_PROFILE"
+    fi
     
     validate_stack_exists
     

@@ -49,6 +49,7 @@ OPTIONS:
     -a, --account-id ACCOUNT    Management account ID (required)
     -n, --notification-email    Email for notifications (optional)
     -s, --stack-name NAME       CloudFormation stack name [default: aws-contact-sync]
+    -p, --profile PROFILE       AWS CLI profile name [default: default]
     --guided                    Use SAM guided deployment
     --no-confirm                Skip deployment confirmation
     --validate-only             Only validate template without deploying
@@ -59,8 +60,8 @@ EXAMPLES:
     # Deploy to production with management account ID
     $0 --environment prod --account-id 123456789012 --notification-email admin@company.com
 
-    # Deploy to development environment
-    $0 --environment dev --account-id 123456789012 --region us-west-2
+    # Deploy to development environment with specific profile
+    $0 --environment dev --account-id 123456789012 --region us-west-2 --profile my-aws-profile
 
     # Validate template only
     $0 --validate-only --account-id 123456789012
@@ -76,6 +77,7 @@ ENVIRONMENT="prod"
 REGION="$DEFAULT_REGION"
 MANAGEMENT_ACCOUNT_ID=""
 NOTIFICATION_EMAIL=""
+AWS_PROFILE=""
 GUIDED=false
 NO_CONFIRM=false
 VALIDATE_ONLY=false
@@ -101,6 +103,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         -s|--stack-name)
             STACK_NAME="$2"
+            shift 2
+            ;;
+        -p|--profile)
+            AWS_PROFILE="$2"
             shift 2
             ;;
         --guided)
@@ -131,6 +137,13 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Set up AWS CLI profile if specified
+AWS_CLI_OPTS=()
+if [[ -n "$AWS_PROFILE" ]]; then
+    AWS_CLI_OPTS+=("--profile" "$AWS_PROFILE")
+    export AWS_PROFILE  # Also set as environment variable for SAM CLI
+fi
+
 # Validation functions
 validate_environment() {
     if [[ ! "$ENVIRONMENT" =~ ^(dev|staging|prod)$ ]]; then
@@ -160,8 +173,11 @@ validate_aws_cli() {
     fi
     
     # Check AWS credentials
-    if ! aws sts get-caller-identity &> /dev/null; then
+    if ! aws "${AWS_CLI_OPTS[@]}" sts get-caller-identity &> /dev/null; then
         log_error "AWS credentials not configured. Please run 'aws configure' first."
+        if [[ -n "$AWS_PROFILE" ]]; then
+            log_error "Profile '$AWS_PROFILE' may not exist or is not configured properly."
+        fi
         exit 1
     fi
 }
@@ -193,7 +209,7 @@ validate_permissions() {
     )
     
     # This is a simplified check - in practice, you might want more comprehensive validation
-    if ! aws iam get-user &> /dev/null && ! aws sts get-caller-identity --query 'Arn' --output text | grep -q 'role/'; then
+    if ! aws "${AWS_CLI_OPTS[@]}" iam get-user &> /dev/null && ! aws "${AWS_CLI_OPTS[@]}" sts get-caller-identity --query 'Arn' --output text | grep -q 'role/'; then
         log_warning "Unable to verify IAM permissions. Proceeding with deployment..."
     fi
 }
@@ -310,17 +326,17 @@ get_stack_outputs() {
     
     local stack_name="$STACK_NAME-$ENVIRONMENT"
     
-    if aws cloudformation describe-stacks --stack-name "$stack_name" --region "$REGION" &> /dev/null; then
+    if aws "${AWS_CLI_OPTS[@]}" cloudformation describe-stacks --stack-name "$stack_name" --region "$REGION" &> /dev/null; then
         echo
         log_info "Stack Outputs:"
-        aws cloudformation describe-stacks \
+        aws "${AWS_CLI_OPTS[@]}" cloudformation describe-stacks \
             --stack-name "$stack_name" \
             --region "$REGION" \
             --query 'Stacks[0].Outputs[*].[OutputKey,OutputValue,Description]' \
             --output table
         
         # Get dashboard URL
-        local dashboard_url=$(aws cloudformation describe-stacks \
+        local dashboard_url=$(aws "${AWS_CLI_OPTS[@]}" cloudformation describe-stacks \
             --stack-name "$stack_name" \
             --region "$REGION" \
             --query 'Stacks[0].Outputs[?OutputKey==`DashboardURL`].OutputValue' \
@@ -341,7 +357,7 @@ rollback_deployment() {
     
     local stack_name="$STACK_NAME-$ENVIRONMENT"
     
-    if ! aws cloudformation describe-stacks --stack-name "$stack_name" --region "$REGION" &> /dev/null; then
+    if ! aws "${AWS_CLI_OPTS[@]}" cloudformation describe-stacks --stack-name "$stack_name" --region "$REGION" &> /dev/null; then
         log_error "Stack $stack_name does not exist"
         exit 1
     fi
@@ -349,8 +365,8 @@ rollback_deployment() {
     log_warning "This will rollback the stack to the previous version. Are you sure? (y/N)"
     read -r response
     if [[ "$response" =~ ^[Yy]$ ]]; then
-        aws cloudformation cancel-update-stack --stack-name "$stack_name" --region "$REGION" || true
-        aws cloudformation continue-update-rollback --stack-name "$stack_name" --region "$REGION"
+        aws "${AWS_CLI_OPTS[@]}" cloudformation cancel-update-stack --stack-name "$stack_name" --region "$REGION" || true
+        aws "${AWS_CLI_OPTS[@]}" cloudformation continue-update-rollback --stack-name "$stack_name" --region "$REGION"
         log_success "Rollback initiated"
     else
         log_info "Rollback cancelled"
@@ -364,7 +380,7 @@ post_deployment_setup() {
     local stack_name="$STACK_NAME-$ENVIRONMENT"
     
     # Get table names from stack outputs
-    local config_table=$(aws cloudformation describe-stacks \
+    local config_table=$(aws "${AWS_CLI_OPTS[@]}" cloudformation describe-stacks \
         --stack-name "$stack_name" \
         --region "$REGION" \
         --query 'Stacks[0].Outputs[?OutputKey==`ConfigTableName`].OutputValue' \
@@ -398,7 +414,7 @@ post_deployment_setup() {
 EOF
         
         # Insert default configuration
-        if aws dynamodb put-item \
+        if aws "${AWS_CLI_OPTS[@]}" dynamodb put-item \
             --table-name "$config_table" \
             --item file:///tmp/default-config.json \
             --region "$REGION" &> /dev/null; then
@@ -419,6 +435,9 @@ main() {
     log_info "Environment: $ENVIRONMENT"
     log_info "Region: $REGION"
     log_info "Stack Name: $STACK_NAME-$ENVIRONMENT"
+    if [[ -n "$AWS_PROFILE" ]]; then
+        log_info "AWS Profile: $AWS_PROFILE"
+    fi
     
     if [[ "$ROLLBACK" == true ]]; then
         rollback_deployment

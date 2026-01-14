@@ -56,6 +56,8 @@ chmod +x scripts/*.sh
 
 ```bash
 aws configure
+# or use a named profile
+aws configure --profile my-aws-profile
 # or
 export AWS_PROFILE=your-profile-name
 ```
@@ -68,12 +70,23 @@ export AWS_PROFILE=your-profile-name
   --account-id 123456789012 \
   --notification-email admin@yourcompany.com \
   --region us-east-1
+
+# Or with a specific AWS profile
+./scripts/deploy.sh \
+  --environment prod \
+  --account-id 123456789012 \
+  --notification-email admin@yourcompany.com \
+  --region us-east-1 \
+  --profile my-aws-profile
 ```
 
 ### 4. Validate Deployment
 
 ```bash
-./scripts/validate.sh --environment prod --deep
+./scripts/validate.sh --environment prod
+
+# Or with a specific AWS profile
+./scripts/validate.sh --environment prod --profile my-aws-profile
 ```
 
 ## Environment-Specific Deployment
@@ -86,6 +99,14 @@ export AWS_PROFILE=your-profile-name
   --account-id 123456789012 \
   --region us-east-1 \
   --notification-email dev-team@yourcompany.com
+
+# Or with a specific AWS profile
+./scripts/deploy.sh \
+  --environment dev \
+  --account-id 123456789012 \
+  --region us-east-1 \
+  --notification-email dev-team@yourcompany.com \
+  --profile my-aws-profile
 ```
 
 **Development Features:**
@@ -190,6 +211,9 @@ Add account IDs to exclude from synchronization:
 
 ```bash
 ./scripts/validate.sh --environment prod
+
+# Or with a specific AWS profile
+./scripts/validate.sh --environment prod --profile my-aws-profile
 ```
 
 Validates:
@@ -205,6 +229,9 @@ Validates:
 
 ```bash
 ./scripts/validate.sh --environment prod --deep
+
+# Or with a specific AWS profile
+./scripts/validate.sh --environment prod --deep --profile my-aws-profile
 ```
 
 Additional validation:
@@ -347,6 +374,9 @@ aws cloudformation describe-stacks \
 
 # Backup data before rollback
 ./scripts/rollback.sh --environment prod --backup-data
+
+# With a specific AWS profile
+./scripts/rollback.sh --environment prod --profile my-aws-profile
 ```
 
 ### Complete Stack Deletion
@@ -354,6 +384,9 @@ aws cloudformation describe-stacks \
 ```bash
 # Delete stack with data backup
 ./scripts/rollback.sh --environment dev --delete --backup-data
+
+# With a specific AWS profile
+./scripts/rollback.sh --environment dev --delete --backup-data --profile my-aws-profile
 ```
 
 ### Data Recovery

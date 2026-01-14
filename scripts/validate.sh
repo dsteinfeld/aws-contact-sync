@@ -45,6 +45,7 @@ OPTIONS:
     -e, --environment ENV       Environment to validate (dev, staging, prod) [default: prod]
     -r, --region REGION         AWS region [default: us-east-1]
     -s, --stack-name NAME       CloudFormation stack name [default: aws-contact-sync]
+    -p, --profile PROFILE       AWS CLI profile name [default: default]
     --deep                      Run deep validation including integration tests
     -h, --help                  Show this help message
 
@@ -52,8 +53,8 @@ EXAMPLES:
     # Basic validation
     $0 --environment prod
 
-    # Deep validation with integration tests
-    $0 --environment prod --deep
+    # Deep validation with integration tests and specific profile
+    $0 --environment prod --deep --profile my-aws-profile
 
 EOF
 }
@@ -62,6 +63,7 @@ EOF
 ENVIRONMENT="prod"
 REGION="$DEFAULT_REGION"
 STACK_NAME="aws-contact-sync"
+AWS_PROFILE=""
 DEEP_VALIDATION=false
 
 while [[ $# -gt 0 ]]; do
@@ -76,6 +78,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         -s|--stack-name)
             STACK_NAME="$2"
+            shift 2
+            ;;
+        -p|--profile)
+            AWS_PROFILE="$2"
             shift 2
             ;;
         --deep)
@@ -96,16 +102,22 @@ done
 
 FULL_STACK_NAME="$STACK_NAME-$ENVIRONMENT"
 
+# Set up AWS CLI profile if specified
+AWS_CLI_OPTS=()
+if [[ -n "$AWS_PROFILE" ]]; then
+    AWS_CLI_OPTS+=("--profile" "$AWS_PROFILE")
+fi
+
 # Validation functions
 validate_stack_exists() {
     log_info "Checking if stack exists..."
     
-    if ! aws cloudformation describe-stacks --stack-name "$FULL_STACK_NAME" --region "$REGION" &> /dev/null; then
+    if ! aws "${AWS_CLI_OPTS[@]}" cloudformation describe-stacks --stack-name "$FULL_STACK_NAME" --region "$REGION" &> /dev/null; then
         log_error "Stack $FULL_STACK_NAME does not exist in region $REGION"
         exit 1
     fi
     
-    local stack_status=$(aws cloudformation describe-stacks \
+    local stack_status=$(aws "${AWS_CLI_OPTS[@]}" cloudformation describe-stacks \
         --stack-name "$FULL_STACK_NAME" \
         --region "$REGION" \
         --query 'Stacks[0].StackStatus' \
@@ -129,8 +141,8 @@ validate_lambda_functions() {
     )
     
     for func in "${functions[@]}"; do
-        if aws lambda get-function --function-name "$func" --region "$REGION" &> /dev/null; then
-            local state=$(aws lambda get-function \
+        if aws "${AWS_CLI_OPTS[@]}" lambda get-function --function-name "$func" --region "$REGION" &> /dev/null; then
+            local state=$(aws "${AWS_CLI_OPTS[@]}" lambda get-function \
                 --function-name "$func" \
                 --region "$REGION" \
                 --query 'Configuration.State' \
@@ -152,13 +164,13 @@ validate_lambda_functions() {
 validate_dynamodb_tables() {
     log_info "Validating DynamoDB tables..."
     
-    local config_table=$(aws cloudformation describe-stacks \
+    local config_table=$(aws "${AWS_CLI_OPTS[@]}" cloudformation describe-stacks \
         --stack-name "$FULL_STACK_NAME" \
         --region "$REGION" \
         --query 'Stacks[0].Outputs[?OutputKey==`ConfigTableName`].OutputValue' \
         --output text)
     
-    local state_table=$(aws cloudformation describe-stacks \
+    local state_table=$(aws "${AWS_CLI_OPTS[@]}" cloudformation describe-stacks \
         --stack-name "$FULL_STACK_NAME" \
         --region "$REGION" \
         --query 'Stacks[0].Outputs[?OutputKey==`StateTableName`].OutputValue' \
@@ -166,7 +178,7 @@ validate_dynamodb_tables() {
     
     for table in "$config_table" "$state_table"; do
         if [[ -n "$table" && "$table" != "None" ]]; then
-            local table_status=$(aws dynamodb describe-table \
+            local table_status=$(aws "${AWS_CLI_OPTS[@]}" dynamodb describe-table \
                 --table-name "$table" \
                 --region "$REGION" \
                 --query 'Table.TableStatus' \
@@ -188,14 +200,14 @@ validate_dynamodb_tables() {
 validate_eventbridge_rules() {
     log_info "Validating EventBridge rules..."
     
-    local rules=$(aws events list-rules \
+    local rules=$(aws "${AWS_CLI_OPTS[@]}" events list-rules \
         --region "$REGION" \
         --query "Rules[?contains(Name, 'ContactSync')].Name" \
         --output text)
     
     if [[ -n "$rules" ]]; then
         for rule in $rules; do
-            local rule_state=$(aws events describe-rule \
+            local rule_state=$(aws "${AWS_CLI_OPTS[@]}" events describe-rule \
                 --name "$rule" \
                 --region "$REGION" \
                 --query 'State' \
@@ -215,14 +227,14 @@ validate_eventbridge_rules() {
 validate_sns_topic() {
     log_info "Validating SNS topic..."
     
-    local topic_arn=$(aws cloudformation describe-stacks \
+    local topic_arn=$(aws "${AWS_CLI_OPTS[@]}" cloudformation describe-stacks \
         --stack-name "$FULL_STACK_NAME" \
         --region "$REGION" \
         --query 'Stacks[0].Outputs[?OutputKey==`NotificationTopicArn`].OutputValue' \
         --output text)
     
     if [[ -n "$topic_arn" && "$topic_arn" != "None" ]]; then
-        if aws sns get-topic-attributes --topic-arn "$topic_arn" --region "$REGION" &> /dev/null; then
+        if aws "${AWS_CLI_OPTS[@]}" sns get-topic-attributes --topic-arn "$topic_arn" --region "$REGION" &> /dev/null; then
             log_success "SNS topic exists and is accessible"
         else
             log_error "SNS topic is not accessible"
@@ -237,7 +249,7 @@ validate_sns_topic() {
 validate_cloudwatch_alarms() {
     log_info "Validating CloudWatch alarms..."
     
-    local alarms=$(aws cloudwatch describe-alarms \
+    local alarms=$(aws "${AWS_CLI_OPTS[@]}" cloudwatch describe-alarms \
         --alarm-name-prefix "$FULL_STACK_NAME" \
         --region "$REGION" \
         --query 'MetricAlarms[*].AlarmName' \
@@ -248,7 +260,7 @@ validate_cloudwatch_alarms() {
         log_success "Found $alarm_count CloudWatch alarms"
         
         for alarm in $alarms; do
-            local alarm_state=$(aws cloudwatch describe-alarms \
+            local alarm_state=$(aws "${AWS_CLI_OPTS[@]}" cloudwatch describe-alarms \
                 --alarm-names "$alarm" \
                 --region "$REGION" \
                 --query 'MetricAlarms[0].StateValue' \
@@ -268,7 +280,7 @@ validate_cloudwatch_alarms() {
 validate_configuration() {
     log_info "Validating system configuration..."
     
-    local config_table=$(aws cloudformation describe-stacks \
+    local config_table=$(aws "${AWS_CLI_OPTS[@]}" cloudformation describe-stacks \
         --stack-name "$FULL_STACK_NAME" \
         --region "$REGION" \
         --query 'Stacks[0].Outputs[?OutputKey==`ConfigTableName`].OutputValue' \
@@ -276,7 +288,7 @@ validate_configuration() {
     
     if [[ -n "$config_table" && "$config_table" != "None" ]]; then
         # Check if default configuration exists
-        if aws dynamodb get-item \
+        if aws "${AWS_CLI_OPTS[@]}" dynamodb get-item \
             --table-name "$config_table" \
             --key '{"config_key":{"S":"default"}}' \
             --region "$REGION" &> /dev/null; then
@@ -318,7 +330,7 @@ test_lambda_invocation() {
     }'
     
     # Invoke function with dry run
-    if aws lambda invoke \
+    if aws "${AWS_CLI_OPTS[@]}" lambda invoke \
         --function-name "$contact_sync_function" \
         --payload "$test_event" \
         --region "$REGION" \
@@ -341,12 +353,15 @@ run_integration_tests() {
     # Set environment variables for tests
     export AWS_REGION="$REGION"
     export STACK_NAME="$FULL_STACK_NAME"
-    export CONFIG_TABLE_NAME=$(aws cloudformation describe-stacks \
+    if [[ -n "$AWS_PROFILE" ]]; then
+        export AWS_PROFILE="$AWS_PROFILE"
+    fi
+    export CONFIG_TABLE_NAME=$(aws "${AWS_CLI_OPTS[@]}" cloudformation describe-stacks \
         --stack-name "$FULL_STACK_NAME" \
         --region "$REGION" \
         --query 'Stacks[0].Outputs[?OutputKey==`ConfigTableName`].OutputValue' \
         --output text)
-    export STATE_TABLE_NAME=$(aws cloudformation describe-stacks \
+    export STATE_TABLE_NAME=$(aws "${AWS_CLI_OPTS[@]}" cloudformation describe-stacks \
         --stack-name "$FULL_STACK_NAME" \
         --region "$REGION" \
         --query 'Stacks[0].Outputs[?OutputKey==`StateTableName`].OutputValue' \
@@ -367,12 +382,12 @@ generate_validation_report() {
     local report_file="/tmp/validation-report-$ENVIRONMENT-$(date +%Y%m%d-%H%M%S).json"
     
     # Collect system information
-    local stack_info=$(aws cloudformation describe-stacks \
+    local stack_info=$(aws "${AWS_CLI_OPTS[@]}" cloudformation describe-stacks \
         --stack-name "$FULL_STACK_NAME" \
         --region "$REGION" \
         --output json)
     
-    local lambda_functions=$(aws lambda list-functions \
+    local lambda_functions=$(aws "${AWS_CLI_OPTS[@]}" lambda list-functions \
         --region "$REGION" \
         --query "Functions[?contains(FunctionName, '$FULL_STACK_NAME')]" \
         --output json)
@@ -400,6 +415,9 @@ main() {
     log_info "Starting validation for environment: $ENVIRONMENT"
     log_info "Region: $REGION"
     log_info "Stack: $FULL_STACK_NAME"
+    if [[ -n "$AWS_PROFILE" ]]; then
+        log_info "AWS Profile: $AWS_PROFILE"
+    fi
     
     validate_stack_exists
     validate_lambda_functions
