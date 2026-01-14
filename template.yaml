@@ -128,6 +128,7 @@ Resources:
       CodeUri: src/
       Handler: lambda_handlers.account_processor_handler.lambda_handler
       Timeout: 900  # 15 minutes for retry logic
+      ReservedConcurrentExecutions: 10  # Limit concurrent executions to avoid API throttling
       Environment:
         Variables:
           NOTIFICATION_FUNCTION_NAME: !Ref NotificationHandler
@@ -165,7 +166,6 @@ Resources:
                 - logs:CreateLogStream
                 - logs:PutLogEvents
               Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*'
-      ReservedConcurrencyLimit: 10  # Limit concurrent executions to avoid API throttling
 
   # Notification Handler Lambda Function
   NotificationHandler:
