@@ -16,8 +16,6 @@ import boto3
 import pytest
 from botocore.exceptions import ClientError
 
-from src.models.contact_models import ContactInformation, AlternateContact
-
 
 @pytest.fixture(scope="session")
 def aws_region():
@@ -81,27 +79,27 @@ def stack_outputs():
 def test_contact_information():
     """Generate test contact information."""
     test_id = uuid.uuid4().hex[:8]
-    return ContactInformation(
-        full_name=f"Test User {test_id}",
-        phone_number=f"+1-555-{test_id[:4]}",
-        address_line1=f"{test_id[:3]} Test Street",
-        city="Test City",
-        country_code="US",
-        postal_code="12345"
-    )
+    return {
+        'fullName': f"Test User {test_id}",
+        'phoneNumber': f"+1-555-{test_id[:4]}",
+        'addressLine1': f"{test_id[:3]} Test Street",
+        'city': "Test City",
+        'countryCode': "US",
+        'postalCode': "12345"
+    }
 
 
 @pytest.fixture
 def test_alternate_contact():
     """Generate test alternate contact."""
     test_id = uuid.uuid4().hex[:8]
-    return AlternateContact(
-        contact_type="BILLING",
-        name=f"Test Billing Contact {test_id}",
-        email=f"billing-{test_id}@example.com",
-        phone_number=f"+1-555-{test_id[:4]}",
-        title="Billing Manager"
-    )
+    return {
+        'contactType': "BILLING",
+        'name': f"Test Billing Contact {test_id}",
+        'emailAddress': f"billing-{test_id}@example.com",
+        'phoneNumber': f"+1-555-{test_id[:4]}",
+        'title': "Billing Manager"
+    }
 
 
 class TestOrganizationDiscovery:
@@ -229,14 +227,7 @@ class TestLambdaFunctionWorkflows:
                     },
                     'recipientAccountId': management_account_id,
                     'requestParameters': {
-                        'contactInformation': {
-                            'fullName': test_contact_information.full_name,
-                            'phoneNumber': test_contact_information.phone_number,
-                            'addressLine1': test_contact_information.address_line1,
-                            'city': test_contact_information.city,
-                            'countryCode': test_contact_information.country_code,
-                            'postalCode': test_contact_information.postal_code
-                        }
+                        'contactInformation': test_contact_information
                     }
                 }
             }]
@@ -328,14 +319,7 @@ class TestLambdaFunctionWorkflows:
             'sync_id': f'test-sync-{uuid.uuid4().hex[:8]}',
             'account_id': management_account_id,  # Use management account for testing
             'contact_type': 'primary',
-            'contact_data': {
-                'fullName': test_contact_information.full_name,
-                'phoneNumber': test_contact_information.phone_number,
-                'addressLine1': test_contact_information.address_line1,
-                'city': test_contact_information.city,
-                'countryCode': test_contact_information.country_code,
-                'postalCode': test_contact_information.postal_code
-            },
+            'contact_data': test_contact_information,
             'initiating_user': f'arn:aws:iam::{management_account_id}:user/integration-test'
         }
         
