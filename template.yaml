@@ -291,7 +291,7 @@ Resources:
     Properties:
       QueueName: !Sub '${AWS::StackName}-dlq'
       MessageRetentionPeriod: 1209600  # 14 days
-      VisibilityTimeoutSeconds: 300
+      VisibilityTimeout: 300
       KmsMasterKeyId: alias/aws/sqs
 
   # CloudWatch Log Groups with Retention
@@ -498,15 +498,13 @@ Resources:
       S3KeyPrefix: 'account-management-events/'
       IncludeGlobalServiceEvents: true
       IsMultiRegionTrail: true
+      IsLogging: true
       EnableLogFileValidation: true
       CloudWatchLogsLogGroupArn: !Sub '${CloudTrailLogGroup.Arn}:*'
       CloudWatchLogsRoleArn: !GetAtt CloudTrailRole.Arn
       EventSelectors:
         - ReadWriteType: WriteOnly
           IncludeManagementEvents: true
-          DataResources:
-            - Type: 'AWS::Account::*'
-              Values: ['*']
 
   # S3 Bucket for CloudTrail Logs
   CloudTrailBucket:
