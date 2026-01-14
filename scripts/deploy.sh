@@ -289,7 +289,8 @@ deploy_application() {
     local deploy_params=(
         "--stack-name" "$STACK_NAME-$ENVIRONMENT"
         "--region" "$REGION"
-        "--capabilities" "CAPABILITY_IAM CAPABILITY_NAMED_IAM"
+        "--capabilities" "CAPABILITY_IAM"
+        "--capabilities" "CAPABILITY_NAMED_IAM"
         "--parameter-overrides"
         "Environment=$ENVIRONMENT"
         "ManagementAccountId=$MANAGEMENT_ACCOUNT_ID"
