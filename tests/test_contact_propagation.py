@@ -75,9 +75,11 @@ class TestContactPropagationProperties:
             mock_config_instance.should_sync_contact_type.return_value = True
             mock_config_instance.is_account_excluded.side_effect = lambda acc_id: acc_id in excluded_account_ids
             
-            # Setup State tracker mock
+            # Setup State tracker mock - return the sync operation as-is
             mock_state_instance = Mock()
             mock_state_tracker.return_value = mock_state_instance
+            mock_state_instance.create_sync_operation.side_effect = lambda sync_op: sync_op
+            mock_state_instance.update_sync_status.return_value = None
             
             # Setup Lambda client mock
             mock_lambda_client = Mock()
@@ -216,8 +218,11 @@ class TestContactPropagationProperties:
             mock_config_instance.should_sync_contact_type.return_value = sync_all_contact_types
             mock_config_instance.is_account_excluded.return_value = False  # No exclusions
             
+            # Setup State tracker mock - return the sync operation as-is
             mock_state_instance = Mock()
             mock_state_tracker.return_value = mock_state_instance
+            mock_state_instance.create_sync_operation.side_effect = lambda sync_op: sync_op
+            mock_state_instance.update_sync_status.return_value = None
             
             mock_lambda_client = Mock()
             mock_boto_client.return_value = mock_lambda_client

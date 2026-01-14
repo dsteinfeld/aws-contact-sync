@@ -174,7 +174,7 @@ This implementation plan breaks down the serverless AWS contact synchronization 
     - Test deployment and configuration
     - _Requirements: All_
 
-- [-] 10. Final checkpoint - Complete system integration
+- [ ] 10. Final checkpoint - Complete system integration
   - Ensure all tests pass, ask the user if questions arise.
 
 ## Notes

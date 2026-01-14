@@ -22,10 +22,11 @@ class TestChangeDetectionProperties:
         management_account_id=st.text(min_size=12, max_size=12, alphabet=st.characters(whitelist_categories=('Nd',))),
         event_name=st.sampled_from(["PutContactInformation", "PutAlternateContact"]),
         user_type=st.sampled_from(["IAMUser", "AssumedRole", "Root"]),
-        has_account_id_in_params=st.booleans()
+        has_account_id_in_params=st.booleans(),
+        alternate_contact_type=st.sampled_from(["BILLING", "OPERATIONS", "SECURITY"])
     )
     @settings(max_examples=100, deadline=None)
-    def test_contact_change_detection_timing(self, management_account_id, event_name, user_type, has_account_id_in_params):
+    def test_contact_change_detection_timing(self, management_account_id, event_name, user_type, has_account_id_in_params, alternate_contact_type):
         """Property 1: For any contact information change (primary or alternate) in the management account,
         the Contact_Sync_Service should detect the change within 5 minutes regardless of the contact type
         or number of fields modified.
@@ -38,7 +39,7 @@ class TestChangeDetectionProperties:
         
         # Determine contact type based on event name
         if event_name == "PutAlternateContact":
-            contact_type = st.sampled_from(["BILLING", "OPERATIONS", "SECURITY"]).example()
+            contact_type = alternate_contact_type
         else:
             contact_type = "primary"
         
