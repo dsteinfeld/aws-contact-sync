@@ -7,7 +7,7 @@ Validates: Requirements 2.1, 2.2, 2.3
 import pytest
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, UTC
 from unittest.mock import Mock, patch, MagicMock
 from hypothesis import given, strategies as st, settings, assume
 from typing import Dict, Any, List
@@ -85,7 +85,7 @@ class TestContactPropagationProperties:
                 import uuid
                 return SyncOperation(
                     sync_id=str(uuid.uuid4()),
-                    timestamp=datetime.utcnow(),
+                    timestamp=datetime.now(UTC),
                     initiating_user=kwargs.get('initiating_user', 'test-user'),
                     contact_type=kwargs.get('contact_type', 'primary'),
                     source_account=kwargs.get('source_account', management_account_id),
@@ -249,7 +249,7 @@ class TestContactPropagationProperties:
                 import uuid
                 return SyncOperation(
                     sync_id=str(uuid.uuid4()),
-                    timestamp=datetime.utcnow(),
+                    timestamp=datetime.now(UTC),
                     initiating_user=kwargs.get('initiating_user', 'test-user'),
                     contact_type=kwargs.get('contact_type', 'primary'),
                     source_account=kwargs.get('source_account', management_account_id),
