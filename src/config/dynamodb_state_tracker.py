@@ -3,7 +3,7 @@
 import json
 import uuid
 import boto3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from typing import Dict, List, Optional, Union
 from botocore.exceptions import ClientError, BotoCoreError
 from ..models.sync_models import SyncOperation, AccountSyncResult
@@ -103,7 +103,7 @@ class DynamoDBStateTracker:
             ClientError: If DynamoDB operation fails
         """
         sync_id = str(uuid.uuid4())
-        timestamp = datetime.utcnow()
+        timestamp = datetime.now(UTC)
         
         sync_operation = SyncOperation(
             sync_id=sync_id,
@@ -170,7 +170,7 @@ class DynamoDBStateTracker:
                 ExpressionAttributeNames={'#status': 'status'},
                 ExpressionAttributeValues={
                     ':status': status,
-                    ':updated': datetime.utcnow().isoformat()
+                    ':updated': datetime.now(UTC).isoformat()
                 },
                 ConditionExpression='attribute_exists(sync_id)',
                 ReturnValues='UPDATED_NEW'
@@ -225,7 +225,7 @@ class DynamoDBStateTracker:
                 UpdateExpression='SET results = :results, updated_at = :updated',
                 ExpressionAttributeValues={
                     ':results': json.dumps(current_results),
-                    ':updated': datetime.utcnow().isoformat()
+                    ':updated': datetime.now(UTC).isoformat()
                 }
             )
             
@@ -393,7 +393,7 @@ class DynamoDBStateTracker:
         Raises:
             ClientError: If DynamoDB operation fails
         """
-        start_time = datetime.utcnow() - timedelta(days=days)
+        start_time = datetime.now(UTC) - timedelta(days=days)
         
         try:
             operations = self.query_sync_history(start_time=start_time, limit=1000)

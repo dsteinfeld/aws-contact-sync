@@ -1,6 +1,6 @@
 """Message formatting for different notification scenarios."""
 
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Dict, List, Any
 from ..models.sync_models import SyncOperation, AccountSyncResult
 from .user_notifications_client import NotificationMessage
@@ -61,7 +61,7 @@ Recommended Actions:
             priority="high",
             notification_type="complete_failure",
             metadata=metadata,
-            timestamp=datetime.utcnow()
+            timestamp=datetime.now(UTC)
         )
 
     @staticmethod
@@ -123,7 +123,7 @@ Recommended Actions:
             priority="medium",
             notification_type="partial_failure",
             metadata=metadata,
-            timestamp=datetime.utcnow()
+            timestamp=datetime.now(UTC)
         )
 
     @staticmethod
@@ -168,7 +168,7 @@ Sync Details:
             priority="low",
             notification_type="success_completion",
             metadata=metadata,
-            timestamp=datetime.utcnow()
+            timestamp=datetime.now(UTC)
         )
 
     @staticmethod
@@ -217,7 +217,7 @@ Recommended Actions:
             priority="high",
             notification_type="permission_errors",
             metadata=metadata,
-            timestamp=datetime.utcnow()
+            timestamp=datetime.now(UTC)
         )
 
     @staticmethod
@@ -266,7 +266,7 @@ Recommended Actions:
             priority="high",
             notification_type="system_errors",
             metadata=metadata,
-            timestamp=datetime.utcnow()
+            timestamp=datetime.now(UTC)
         )
 
     @staticmethod
@@ -309,7 +309,7 @@ Recommended Actions:
             priority="medium",
             notification_type="configuration_errors",
             metadata=metadata,
-            timestamp=datetime.utcnow()
+            timestamp=datetime.now(UTC)
         )
 
     @staticmethod

@@ -2,7 +2,7 @@
 
 import json
 import boto3
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Dict, Any, Optional, List
 from botocore.exceptions import ClientError, BotoCoreError
 from .config_manager import SyncConfig, ConfigManager
@@ -55,8 +55,8 @@ class DynamoDBConfigManager(ConfigManager):
             item = {
                 'config_id': 'current',  # Single configuration approach
                 'config_data': json.dumps(config.to_dict()),
-                'created_at': datetime.utcnow().isoformat(),
-                'updated_at': datetime.utcnow().isoformat(),
+                'created_at': datetime.now(UTC).isoformat(),
+                'updated_at': datetime.now(UTC).isoformat(),
                 'version': 1
             }
             
@@ -153,7 +153,7 @@ class DynamoDBConfigManager(ConfigManager):
                 UpdateExpression='SET config_data = :config, updated_at = :updated, version = version + :inc',
                 ExpressionAttributeValues={
                     ':config': json.dumps(updated_config.to_dict()),
-                    ':updated': datetime.utcnow().isoformat(),
+                    ':updated': datetime.now(UTC).isoformat(),
                     ':inc': 1
                 },
                 ConditionExpression='attribute_exists(config_id)'
