@@ -1,0 +1,4 @@
+{
+  "notification_type": "test_delivery",
+  "message": "Testing notification delivery from AWS Contact Sync system"
+}

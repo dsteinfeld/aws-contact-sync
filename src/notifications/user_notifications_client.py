@@ -71,6 +71,8 @@ class UserNotificationsClient:
         # Initialize AWS clients
         self._user_notifications_client = None
         self._sns_client = None
+        self._account_mgmt_client = None
+        self._security_contact_email = None
         
     def _get_user_notifications_client(self):
         """Get or create User Notifications client."""
@@ -86,6 +88,38 @@ class UserNotificationsClient:
         if self._sns_client is None:
             self._sns_client = boto3.client('sns', region_name=self.region)
         return self._sns_client
+    
+    def _get_account_mgmt_client(self):
+        """Get or create Account Management client."""
+        if self._account_mgmt_client is None:
+            self._account_mgmt_client = boto3.client('account', region_name=self.region)
+        return self._account_mgmt_client
+    
+    def _get_security_contact_email(self) -> Optional[str]:
+        """Get the Security alternate contact email from management account.
+        
+        Returns:
+            Security contact email address or None if not found
+        """
+        if self._security_contact_email is not None:
+            return self._security_contact_email
+        
+        try:
+            client = self._get_account_mgmt_client()
+            response = client.get_alternate_contact(AlternateContactType='SECURITY')
+            self._security_contact_email = response['AlternateContact']['EmailAddress']
+            logger.info(f"Retrieved Security contact email: {self._security_contact_email}")
+            return self._security_contact_email
+        except ClientError as e:
+            error_code = e.response.get('Error', {}).get('Code', 'Unknown')
+            if error_code == 'ResourceNotFoundException':
+                logger.warning("No Security alternate contact configured in management account")
+            else:
+                logger.error(f"Failed to retrieve Security contact: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Unexpected error retrieving Security contact: {e}")
+            return None
 
     def send_notification(self, message: NotificationMessage) -> bool:
         """Send notification using User Notifications with SNS fallback.
@@ -96,21 +130,27 @@ class UserNotificationsClient:
         Returns:
             True if notification was sent successfully, False otherwise
         """
-        # Try User Notifications first
-        if self._send_user_notification(message):
-            logger.info(f"Notification sent via User Notifications: {message.title}")
-            return True
+        user_notifications_error = None
         
-        # Fallback to SNS
-        if self._send_sns_notification(message):
+        # Try User Notifications first
+        try:
+            if self._send_user_notification(message):
+                logger.info(f"Notification sent via User Notifications: {message.title}")
+                return True
+        except Exception as e:
+            user_notifications_error = str(e)
+            logger.warning(f"User Notifications failed: {user_notifications_error}")
+        
+        # Fallback to SNS with error details
+        if self._send_sns_notification(message, user_notifications_error):
             logger.info(f"Notification sent via SNS fallback: {message.title}")
             return True
         
-        logger.error(f"Failed to send notification: {message.title}")
+        logger.error(f"Failed to send notification via both User Notifications and SNS: {message.title}")
         return False
 
     def _send_user_notification(self, message: NotificationMessage) -> bool:
-        """Send notification via AWS User Notifications.
+        """Send notification via AWS User Notifications to Security contact.
         
         Args:
             message: Notification message to send
@@ -119,10 +159,13 @@ class UserNotificationsClient:
             True if successful, False otherwise
         """
         try:
-            client = self._get_user_notifications_client()
+            # Get Security contact email
+            security_email = self._get_security_contact_email()
+            if not security_email:
+                logger.warning("No Security contact email available, cannot send User Notification")
+                return False
             
-            # Determine delivery channels based on priority
-            channels = self._get_channels_for_priority(message.priority)
+            client = self._get_user_notifications_client()
             
             # Create notification content
             content = {
@@ -136,35 +179,43 @@ class UserNotificationsClient:
                 }
             }
             
-            # Send notification
-            response = client.create_event_rule(
-                name=f"contact-sync-{message.notification_type}-{int(message.timestamp.timestamp())}",
-                eventPattern=json.dumps({
-                    'source': ['aws.contact-sync'],
-                    'detail-type': [message.notification_type],
-                    'detail': content
-                }),
-                targets=[{
-                    'id': '1',
-                    'arn': f"arn:aws:notifications:{self.config.notification_hub_region}:*:delivery-channel/{channel}",
-                    'input': json.dumps(content)
-                } for channel in channels]
+            # Send notification via User Notifications
+            # Using the correct API for AWS User Notifications service
+            response = client.send_user_notification(
+                NotificationConfiguration={
+                    'Subject': message.title,
+                    'Body': message.message,
+                    'Priority': message.priority.upper()
+                },
+                Recipients=[{
+                    'Type': 'EMAIL',
+                    'Address': security_email
+                }],
+                Source='aws-contact-sync',
+                EventType=message.notification_type
             )
             
+            logger.info(f"User Notification sent to Security contact: {security_email}")
             return response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 200
             
-        except (ClientError, BotoCoreError) as e:
-            logger.warning(f"User Notifications failed: {e}")
-            return False
+        except ClientError as e:
+            error_code = e.response.get('Error', {}).get('Code', 'Unknown')
+            error_msg = e.response.get('Error', {}).get('Message', str(e))
+            logger.warning(f"User Notifications API error ({error_code}): {error_msg}")
+            raise Exception(f"User Notifications API error: {error_code} - {error_msg}")
+        except BotoCoreError as e:
+            logger.warning(f"User Notifications connection error: {e}")
+            raise Exception(f"User Notifications connection error: {e}")
         except Exception as e:
             logger.error(f"Unexpected error in User Notifications: {e}")
-            return False
+            raise
 
-    def _send_sns_notification(self, message: NotificationMessage) -> bool:
+    def _send_sns_notification(self, message: NotificationMessage, user_notifications_error: Optional[str] = None) -> bool:
         """Send notification via SNS fallback.
         
         Args:
             message: Notification message to send
+            user_notifications_error: Error from User Notifications attempt (if any)
             
         Returns:
             True if successful, False otherwise
@@ -172,11 +223,22 @@ class UserNotificationsClient:
         try:
             client = self._get_sns_client()
             
+            # Add User Notifications error to message if present
+            message_body = message.message
+            if user_notifications_error:
+                message_body = f"""
+NOTE: This notification was sent via SNS fallback because AWS User Notifications failed.
+User Notifications Error: {user_notifications_error}
+
+---
+
+{message.message}
+                """.strip()
+            
             # Create SNS message
             sns_message = {
-                'default': message.message,
-                'email': self._format_email_message(message),
-                'sms': self._format_sms_message(message)
+                'default': message_body,
+                'email': self._format_email_message(message, user_notifications_error)
             }
             
             # Send to SNS topic
@@ -184,7 +246,7 @@ class UserNotificationsClient:
                 TopicArn=self.config.fallback_sns_topic,
                 Message=json.dumps(sns_message),
                 MessageStructure='json',
-                Subject=message.title,
+                Subject=f"[SNS Fallback] {message.title}" if user_notifications_error else message.title,
                 MessageAttributes={
                     'priority': {
                         'DataType': 'String',
@@ -193,6 +255,10 @@ class UserNotificationsClient:
                     'notification_type': {
                         'DataType': 'String',
                         'StringValue': message.notification_type
+                    },
+                    'fallback': {
+                        'DataType': 'String',
+                        'StringValue': 'true' if user_notifications_error else 'false'
                     }
                 }
             )
@@ -225,16 +291,17 @@ class UserNotificationsClient:
         else:
             return [ch for ch in self.config.delivery_channels if ch == "EMAIL"]
 
-    def _format_email_message(self, message: NotificationMessage) -> str:
+    def _format_email_message(self, message: NotificationMessage, user_notifications_error: Optional[str] = None) -> str:
         """Format message for email delivery.
         
         Args:
             message: Notification message
+            user_notifications_error: Error from User Notifications attempt (if any)
             
         Returns:
             Formatted email message
         """
-        return f"""
+        email_body = f"""
 {message.title}
 
 {message.message}
@@ -245,26 +312,27 @@ Timestamp: {message.timestamp.isoformat()}
 
 Metadata:
 {json.dumps(message.metadata, indent=2)}
-
----
-AWS Contact Synchronization System
         """.strip()
-
-    def _format_sms_message(self, message: NotificationMessage) -> str:
-        """Format message for SMS delivery.
         
-        Args:
-            message: Notification message
-            
-        Returns:
-            Formatted SMS message (truncated for SMS limits)
-        """
-        # SMS messages should be concise
-        sms_text = f"AWS Contact Sync: {message.title} - {message.message}"
-        # Truncate to SMS limit (160 characters)
-        if len(sms_text) > 160:
-            sms_text = sms_text[:157] + "..."
-        return sms_text
+        if user_notifications_error:
+            email_body = f"""
+================================================================================
+NOTIFICATION DELIVERY NOTICE
+================================================================================
+
+This notification was sent via SNS fallback because AWS User Notifications 
+failed to deliver the message.
+
+User Notifications Error:
+{user_notifications_error}
+
+================================================================================
+
+{email_body}
+            """.strip()
+        
+        email_body += "\n\n---\nAWS Contact Synchronization System"
+        return email_body
 
     def should_notify(self, notification_type: str, failed_accounts: int, total_accounts: int) -> bool:
         """Determine if notification should be sent based on configuration.
