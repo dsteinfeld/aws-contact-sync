@@ -1,0 +1,44 @@
+# Exclude test files
+tests/
+pytest.ini
+
+# Exclude development files
+.git/
+.gitignore
+.kiro/
+
+# Exclude documentation
+*.md
+DEPLOYMENT.md
+
+# Exclude config files (not needed in Lambda)
+config/
+samconfig.toml
+
+# Exclude scripts
+scripts/
+
+# Exclude Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Exclude build artifacts
+.aws-sam/
+build/
+dist/
+*.egg-info/
+
+# Exclude IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Exclude dependencies folder (handled by layer)
+dependencies/
+
+# Keep only src/ and necessary files

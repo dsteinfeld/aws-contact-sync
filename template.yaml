@@ -61,8 +61,8 @@ Resources:
     Properties:
       FunctionName: !Sub '${AWS::StackName}-contact-sync-handler'
       Description: 'Main orchestrator for contact synchronization operations'
-      CodeUri: src/
-      Handler: lambda_handlers.contact_sync_handler.lambda_handler
+      CodeUri: .
+      Handler: src.lambda_handlers.contact_sync_handler.lambda_handler
       Environment:
         Variables:
           ACCOUNT_PROCESSOR_FUNCTION_NAME: !Ref AccountProcessorHandler
@@ -129,8 +129,8 @@ Resources:
     Properties:
       FunctionName: !Sub '${AWS::StackName}-account-processor-handler'
       Description: 'Processes individual member account contact updates'
-      CodeUri: src/
-      Handler: lambda_handlers.account_processor_handler.lambda_handler
+      CodeUri: .
+      Handler: src.lambda_handlers.account_processor_handler.lambda_handler
       Timeout: 900  # 15 minutes for retry logic
       Environment:
         Variables:
@@ -176,8 +176,8 @@ Resources:
     Properties:
       FunctionName: !Sub '${AWS::StackName}-notification-handler'
       Description: 'Handles notification delivery for sync operations'
-      CodeUri: src/
-      Handler: lambda_handlers.notification_handler.lambda_handler
+      CodeUri: .
+      Handler: src.lambda_handlers.notification_handler.lambda_handler
       Policies:
         - Version: '2012-10-17'
           Statement:
