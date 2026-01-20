@@ -239,16 +239,34 @@ class CloudTrailEventParser:
             List of ContactChangeEvent objects (may be empty)
         """
         events = []
-        records = lambda_event.get("Records", [])
         
-        for record in records:
+        # EventBridge can send events in two formats:
+        # 1. Direct invocation: event has 'detail' field directly
+        # 2. Through SQS/SNS: event has 'Records' array
+        
+        if "detail" in lambda_event:
+            # Direct EventBridge invocation
             try:
-                parsed_event = self.parse_eventbridge_record(record)
+                parsed_event = self.parse_event(lambda_event["detail"])
                 if parsed_event:
                     events.append(parsed_event)
             except Exception as e:
-                logger.error(f"Error processing record: {e}")
-                # Continue processing other records
-                continue
+                logger.error(f"Error processing direct EventBridge event: {e}")
+                logger.debug(f"Event data: {json.dumps(lambda_event, default=str)}")
+        elif "Records" in lambda_event:
+            # Event wrapped in Records (SQS/SNS)
+            records = lambda_event.get("Records", [])
+            for record in records:
+                try:
+                    parsed_event = self.parse_eventbridge_record(record)
+                    if parsed_event:
+                        events.append(parsed_event)
+                except Exception as e:
+                    logger.error(f"Error processing record: {e}")
+                    # Continue processing other records
+                    continue
+        else:
+            logger.warning(f"Unknown event format - no 'detail' or 'Records' field found")
+            logger.debug(f"Event keys: {list(lambda_event.keys())}")
                 
         return events

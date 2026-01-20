@@ -78,7 +78,10 @@ class ContactSyncHandler:
             Dict containing processing results
         """
         try:
-            logger.info(f"Processing Lambda event with {len(event.get('Records', []))} records")
+            # Log event structure for debugging
+            event_type = "direct" if "detail" in event else "records" if "Records" in event else "unknown"
+            logger.info(f"Processing Lambda event (type: {event_type})")
+            logger.debug(f"Event keys: {list(event.keys())}")
             
             # Parse contact change events from the Lambda event
             contact_events = self.event_parser.parse_lambda_event(event)
