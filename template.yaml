@@ -74,6 +74,7 @@ Resources:
               Action:
                 - organizations:ListAccounts
                 - organizations:DescribeAccount
+                - organizations:DescribeOrganization
               Resource: '*'
             - Effect: Allow
               Action:
@@ -142,6 +143,7 @@ Resources:
               Action:
                 - organizations:ListAccounts
                 - organizations:DescribeAccount
+                - organizations:DescribeOrganization
               Resource: '*'
             - Effect: Allow
               Action:
