@@ -56,7 +56,7 @@ class DynamoDBConfigManager(ConfigManager):
             
             # Store configuration with metadata
             item = {
-                'config_id': 'current',  # Single configuration approach
+                'config_key': 'current',  # Single configuration approach
                 'config_data': json.dumps(config.to_dict()),
                 'created_at': datetime.now(timezone.utc).isoformat(),
                 'updated_at': datetime.now(timezone.utc).isoformat(),
@@ -66,7 +66,7 @@ class DynamoDBConfigManager(ConfigManager):
             # Use condition to prevent overwriting existing config
             table.put_item(
                 Item=item,
-                ConditionExpression='attribute_not_exists(config_id)'
+                ConditionExpression='attribute_not_exists(config_key)'
             )
             
             self._config = config
@@ -93,7 +93,7 @@ class DynamoDBConfigManager(ConfigManager):
         try:
             table = self._get_table()
             
-            response = table.get_item(Key={'config_id': 'current'})
+            response = table.get_item(Key={'config_key': 'current'})
             
             if 'Item' not in response:
                 return None
@@ -154,14 +154,14 @@ class DynamoDBConfigManager(ConfigManager):
             table = self._get_table()
             
             table.update_item(
-                Key={'config_id': 'current'},
+                Key={'config_key': 'current'},
                 UpdateExpression='SET config_data = :config, updated_at = :updated, version = version + :inc',
                 ExpressionAttributeValues={
                     ':config': json.dumps(updated_config.to_dict()),
                     ':updated': datetime.now(timezone.utc).isoformat(),
                     ':inc': 1
                 },
-                ConditionExpression='attribute_exists(config_id)'
+                ConditionExpression='attribute_exists(config_key)'
             )
             
             self._config = updated_config
@@ -188,7 +188,7 @@ class DynamoDBConfigManager(ConfigManager):
             table = self._get_table()
             
             response = table.delete_item(
-                Key={'config_id': 'current'},
+                Key={'config_key': 'current'},
                 ReturnValues='ALL_OLD'
             )
             

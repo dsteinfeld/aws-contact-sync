@@ -303,7 +303,7 @@ class AccountProcessorHandler:
                 current_contact = self.account_mgmt_client.get_contact_information(account_id)
             else:
                 current_contact = self.account_mgmt_client.get_alternate_contact(
-                    account_id, contact_type.upper()
+                    contact_type.upper(), account_id
                 )
             
             # If no current contact exists, update is needed
@@ -376,9 +376,9 @@ class AccountProcessorHandler:
         """
         try:
             if contact_type.lower() == "primary":
-                self.account_mgmt_client.put_contact_information(account_id, contact_obj)
+                self.account_mgmt_client.put_contact_information(contact_obj, account_id)
             else:
-                self.account_mgmt_client.put_alternate_contact(account_id, contact_obj)
+                self.account_mgmt_client.put_alternate_contact(contact_obj, account_id)
             
             logger.info(f"Successfully updated {contact_type} contact for account {account_id}")
             return True
