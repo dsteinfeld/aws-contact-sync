@@ -492,9 +492,6 @@ Resources:
   # CloudTrail for Account Management API Events
   AccountManagementCloudTrail:
     Type: AWS::CloudTrail::Trail
-    DependsOn:
-      - CloudTrailLogGroup
-      - CloudTrailRole
     Properties:
       TrailName: !Sub '${AWS::StackName}-account-management-trail'
       S3BucketName: !Ref CloudTrailBucket
