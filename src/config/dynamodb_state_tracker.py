@@ -1,6 +1,7 @@
 """DynamoDB-based state tracker for AWS Contact Sync operations."""
 
 import json
+import logging
 import uuid
 import boto3
 from datetime import datetime, timedelta, timezone
@@ -8,6 +9,8 @@ from typing import Dict, List, Optional, Union
 from botocore.exceptions import ClientError, BotoCoreError
 from ..models.sync_models import SyncOperation, AccountSyncResult
 from ..models.contact_models import ContactInformation, AlternateContact
+
+logger = logging.getLogger(__name__)
 
 
 class DynamoDBStateTracker:

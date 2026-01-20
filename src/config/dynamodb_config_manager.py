@@ -1,11 +1,14 @@
 """DynamoDB-based configuration manager for AWS Contact Sync."""
 
 import json
+import logging
 import boto3
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List
 from botocore.exceptions import ClientError, BotoCoreError
 from .config_manager import SyncConfig, ConfigManager
+
+logger = logging.getLogger(__name__)
 
 
 class DynamoDBConfigManager(ConfigManager):
