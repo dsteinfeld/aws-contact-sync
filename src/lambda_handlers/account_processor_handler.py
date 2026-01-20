@@ -12,7 +12,7 @@ import json
 import logging
 import os
 import time
-from datetime import datetime, UTC
+from datetime import datetime, timezone
 from typing import Dict, Any, Optional, Union
 
 import boto3
@@ -151,7 +151,7 @@ class AccountProcessorHandler:
         result = AccountSyncResult(
             account_id=account_id,
             status="pending",
-            timestamp=datetime.now(UTC)
+            timestamp=datetime.now(timezone.utc)
         )
         
         try:
@@ -166,11 +166,11 @@ class AccountProcessorHandler:
             
             if success:
                 result.status = "success"
-                result.timestamp = datetime.now(UTC)
+                result.timestamp = datetime.now(timezone.utc)
                 logger.info(f"Successfully updated {contact_type} contact for account {account_id}")
             else:
                 result.status = "failed"
-                result.timestamp = datetime.now(UTC)
+                result.timestamp = datetime.now(timezone.utc)
                 logger.error(f"Failed to update {contact_type} contact for account {account_id} after {result.retry_count} attempts")
             
             # Update final state
@@ -186,7 +186,7 @@ class AccountProcessorHandler:
             logger.error(f"Error processing account {account_id}: {e}")
             result.status = "failed"
             result.error_message = str(e)
-            result.timestamp = datetime.now(UTC)
+            result.timestamp = datetime.now(timezone.utc)
             
             try:
                 self.update_account_result(sync_id, result)

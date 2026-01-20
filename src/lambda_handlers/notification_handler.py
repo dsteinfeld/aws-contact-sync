@@ -8,7 +8,7 @@ from ..notifications.notification_handler import NotificationHandler
 from ..config.dynamodb_config_manager import DynamoDBConfigManager
 from ..models.sync_models import SyncOperation, AccountSyncResult
 from ..models.contact_models import ContactInformation, AlternateContact
-from datetime import datetime, UTC
+from datetime import datetime, timezone
 
 # Configure logging
 logger = logging.getLogger()
@@ -236,7 +236,7 @@ def parse_sync_operation(sync_data: Dict[str, Any]) -> SyncOperation:
         if isinstance(timestamp_str, str):
             timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
         else:
-            timestamp = datetime.now(UTC)
+            timestamp = datetime.now(timezone.utc)
         
         results[account_id] = AccountSyncResult(
             account_id=account_id,
@@ -251,7 +251,7 @@ def parse_sync_operation(sync_data: Dict[str, Any]) -> SyncOperation:
     if isinstance(timestamp_str, str):
         timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
     else:
-        timestamp = datetime.now(UTC)
+        timestamp = datetime.now(timezone.utc)
     
     return SyncOperation(
         sync_id=sync_data.get('sync_id', 'unknown'),

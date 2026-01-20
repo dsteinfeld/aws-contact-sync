@@ -2,7 +2,7 @@
 
 import logging
 from typing import List, Dict, Any, Optional
-from datetime import datetime, UTC
+from datetime import datetime, timezone
 from ..models.sync_models import SyncOperation, AccountSyncResult
 from ..config.dynamodb_config_manager import DynamoDBConfigManager
 from .user_notifications_client import UserNotificationsClient, NotificationConfig
@@ -245,7 +245,7 @@ class NotificationHandler:
             
             test_sync = SyncOperation(
                 sync_id="test-notification",
-                timestamp=datetime.now(UTC),
+                timestamp=datetime.now(timezone.utc),
                 initiating_user="arn:aws:iam::123456789012:user/test-user",
                 contact_type="primary",
                 source_account="123456789012",
@@ -256,7 +256,7 @@ class NotificationHandler:
                     "234567890123": AccountSyncResult(
                         account_id="234567890123",
                         status="success",
-                        timestamp=datetime.now(UTC)
+                        timestamp=datetime.now(timezone.utc)
                     )
                 }
             )
@@ -363,12 +363,12 @@ Error: {error_message}
             return {
                 "sync_id": sync_id,
                 "notification_enabled": self._get_notification_client() is not None,
-                "timestamp": datetime.now(UTC).isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
         except Exception as e:
             logger.error(f"Failed to get notification status: {e}")
             return {
                 "sync_id": sync_id,
                 "error": str(e),
-                "timestamp": datetime.now(UTC).isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }

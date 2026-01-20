@@ -5,7 +5,7 @@ Validates: Requirements 4.1, 4.2
 """
 
 import pytest
-from datetime import datetime, timedelta, UTC
+from datetime import datetime, timedelta, timezone.utc
 from hypothesis import given, strategies as st, assume
 from src.config.dynamodb_state_tracker import DynamoDBStateTracker
 from src.models.contact_models import ContactInformation, AlternateContact
@@ -160,7 +160,7 @@ class TestComprehensiveAuditLogging:
                         'Item': {
                             'sync_id': sync_id,
                             'results': '{}',  # Start with empty results
-                            'timestamp': datetime.now(UTC).isoformat()
+                            'timestamp': datetime.now(timezone.utc).isoformat()
                         }
                     }
                 
@@ -333,7 +333,7 @@ class TestComprehensiveAuditLogging:
             )
         
         # Verify TTL is set for 90+ day retention
-        current_time = datetime.now(UTC).timestamp()
+        current_time = datetime.now(timezone.utc).timestamp()
         ninety_days_from_now = int(current_time + (90 * 24 * 60 * 60))
         
         for ttl in ttl_values:

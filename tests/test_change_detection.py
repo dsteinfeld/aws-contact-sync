@@ -203,7 +203,7 @@ class TestChangeDetectionProperties:
         event = {
             "eventID": f"test-event-{hash(management_account_id + event_name) % 100000}",
             "eventName": event_name,
-            "eventTime": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "eventTime": datetime.now(timezone.timezone.utc).isoformat().replace("+00:00", "Z"),
             "eventSource": "account.amazonaws.com",
             "eventVersion": "1.05",
             "recipientAccountId": management_account_id,

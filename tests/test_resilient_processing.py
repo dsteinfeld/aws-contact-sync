@@ -9,7 +9,7 @@ import json
 import pytest
 from unittest.mock import Mock, patch
 from hypothesis import given, strategies as st, assume, settings
-from datetime import datetime, UTC
+from datetime import datetime, timezone.utc
 from typing import List, Dict, Any
 
 from src.lambda_handlers.account_processor_handler import AccountProcessorHandler
@@ -248,7 +248,7 @@ class TestResilientProcessingProperties:
             mock_state_instance = mock_state.return_value
             mock_state_instance.create_sync_operation.return_value = Mock(
                 sync_id="test-sync-123",
-                timestamp=datetime.now(UTC),
+                timestamp=datetime.now(timezone.utc),
                 initiating_user="test-user",
                 contact_type=contact_type,
                 source_account="123456789012",
@@ -284,7 +284,7 @@ class TestResilientProcessingProperties:
             # Create a mock contact change event
             contact_event = ContactChangeEvent(
                 event_id="test-event-123",
-                event_time=datetime.now(UTC),
+                event_time=datetime.now(timezone.utc),
                 event_name="PutContactInformation" if contact_type.lower() == "primary" else "PutAlternateContact",
                 contact_type=contact_type,
                 source_account="123456789012",

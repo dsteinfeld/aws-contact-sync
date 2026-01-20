@@ -12,7 +12,7 @@ import json
 import logging
 import os
 import uuid
-from datetime import datetime, UTC
+from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 
 import boto3
@@ -274,7 +274,7 @@ class ContactSyncHandler:
             results[account_id] = AccountSyncResult(
                 account_id=account_id,
                 status="pending",
-                timestamp=datetime.now(UTC)
+                timestamp=datetime.now(timezone.utc)
             )
         
         sync_operation = SyncOperation(
@@ -337,7 +337,7 @@ class ContactSyncHandler:
                 try:
                     sync_operation.results[account_id].status = "failed"
                     sync_operation.results[account_id].error_message = str(e)
-                    sync_operation.results[account_id].timestamp = datetime.now(UTC)
+                    sync_operation.results[account_id].timestamp = datetime.now(timezone.utc)
                 except Exception:
                     pass  # Continue processing other accounts
         

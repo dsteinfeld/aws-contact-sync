@@ -28,7 +28,7 @@ Parameters:
 
 Globals:
   Function:
-    Runtime: python3.9
+    Runtime: python3.13
     Timeout: 300
     MemorySize: 512
     Environment:
@@ -50,10 +50,10 @@ Resources:
       Description: 'Dependencies layer for AWS Contact Sync'
       ContentUri: dependencies/
       CompatibleRuntimes:
-        - python3.9
+        - python3.13
       RetentionPolicy: Delete
     Metadata:
-      BuildMethod: python3.9
+      BuildMethod: python3.13
 
   # Main Contact Sync Handler Lambda Function
   ContactSyncHandler:

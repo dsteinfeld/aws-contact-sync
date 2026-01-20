@@ -75,7 +75,7 @@ class TestStatusReportingProperties:
         num_failed = num_accounts - num_successful
         
         results = {}
-        timestamp = datetime.now(timezone.utc)
+        timestamp = datetime.now(timezone.timezone.utc)
         
         # Create successful results
         for i in range(num_successful):
@@ -272,7 +272,7 @@ class TestStatusReportingEdgeCases:
         """Test status reporting with empty results."""
         sync_operation = SyncOperation(
             sync_id="test-empty",
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(timezone.timezone.utc),
             initiating_user="arn:aws:iam::123456789012:user/test",
             contact_type="primary",
             source_account="123456789012",
@@ -305,14 +305,14 @@ class TestStatusReportingEdgeCases:
             "234567890123": AccountSyncResult(
                 account_id="234567890123",
                 status="skipped",
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(timezone.timezone.utc),
                 error_message="Account excluded by configuration"
             )
         }
         
         sync_operation = SyncOperation(
             sync_id="test-skipped",
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(timezone.timezone.utc),
             initiating_user="arn:aws:iam::123456789012:user/test",
             contact_type="primary",
             source_account="123456789012",

@@ -84,7 +84,7 @@ class TestNotificationMessage:
             priority="high",
             notification_type="test",
             metadata={"key": "value"},
-            timestamp=datetime.now(timezone.utc)
+            timestamp=datetime.now(timezone.timezone.utc)
         )
         
         assert message.title == "Test Notification"
@@ -100,7 +100,7 @@ class TestNotificationMessage:
                 priority="high",
                 notification_type="test",
                 metadata={},
-                timestamp=datetime.now(timezone.utc)
+                timestamp=datetime.now(timezone.timezone.utc)
             )
     
     def test_invalid_message_priority(self):
@@ -112,7 +112,7 @@ class TestNotificationMessage:
                 priority="invalid",
                 notification_type="test",
                 metadata={},
-                timestamp=datetime.now(timezone.utc)
+                timestamp=datetime.now(timezone.timezone.utc)
             )
 
 
@@ -193,7 +193,7 @@ class TestUserNotificationsClient:
             priority="high",
             notification_type="test",
             metadata={"key": "value"},
-            timestamp=datetime.now(timezone.utc)
+            timestamp=datetime.now(timezone.timezone.utc)
         )
         
         result = self.client.send_notification(message)
@@ -230,7 +230,7 @@ class TestUserNotificationsClient:
             priority="high",
             notification_type="test",
             metadata={"key": "value"},
-            timestamp=datetime.now(timezone.utc)
+            timestamp=datetime.now(timezone.timezone.utc)
         )
         
         result = self.client.send_notification(message)
@@ -256,7 +256,7 @@ class TestUserNotificationsClient:
             priority="high",
             notification_type="test",
             metadata={"key": "value"},
-            timestamp=datetime.now(timezone.utc)
+            timestamp=datetime.now(timezone.timezone.utc)
         )
         
         result = self.client.send_notification(message)
@@ -270,7 +270,7 @@ class TestUserNotificationsClient:
             priority="high",
             notification_type="test",
             metadata={"sync_id": "123", "account": "456"},
-            timestamp=datetime.now(timezone.utc)
+            timestamp=datetime.now(timezone.timezone.utc)
         )
         
         formatted = self.client._format_email_message(message)
@@ -290,7 +290,7 @@ class TestUserNotificationsClient:
             priority="high",
             notification_type="test",
             metadata={},
-            timestamp=datetime.now(timezone.utc)
+            timestamp=datetime.now(timezone.timezone.utc)
         )
         
         formatted = self.client._format_sms_message(message)
@@ -316,7 +316,7 @@ class TestMessageFormatter:
         
         self.sync_operation = SyncOperation(
             sync_id="test-sync-123",
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(timezone.timezone.utc),
             initiating_user="arn:aws:iam::123456789012:user/test-user",
             contact_type="primary",
             source_account="123456789012",
@@ -327,12 +327,12 @@ class TestMessageFormatter:
                 "234567890123": AccountSyncResult(
                     account_id="234567890123",
                     status="success",
-                    timestamp=datetime.now(timezone.utc)
+                    timestamp=datetime.now(timezone.timezone.utc)
                 ),
                 "345678901234": AccountSyncResult(
                     account_id="345678901234",
                     status="failed",
-                    timestamp=datetime.now(timezone.utc),
+                    timestamp=datetime.now(timezone.timezone.utc),
                     error_message="AccessDenied: Insufficient permissions"
                 )
             }
@@ -393,7 +393,7 @@ class TestMessageFormatter:
             AccountSyncResult(
                 account_id="345678901234",
                 status="failed",
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(timezone.timezone.utc),
                 error_message="AccessDenied: Insufficient permissions"
             )
         ]
@@ -452,7 +452,7 @@ class TestMessageFormatter:
                 AccountSyncResult(
                     account_id=f"{100000000000 + i:012d}",
                     status="failed",
-                    timestamp=datetime.now(timezone.utc),
+                    timestamp=datetime.now(timezone.timezone.utc),
                     error_message=f"Error {i}"
                 )
             )
@@ -493,7 +493,7 @@ class TestNotificationHandler:
         
         self.sync_operation = SyncOperation(
             sync_id="test-sync-123",
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(timezone.timezone.utc),
             initiating_user="arn:aws:iam::123456789012:user/test-user",
             contact_type="primary",
             source_account="123456789012",
@@ -511,7 +511,7 @@ class TestNotificationHandler:
                 "234567890123": AccountSyncResult(
                     account_id="234567890123",
                     status="success",
-                    timestamp=datetime.now(timezone.utc)
+                    timestamp=datetime.now(timezone.timezone.utc)
                 )
             }
         )
@@ -594,14 +594,14 @@ class TestNotificationHandler:
         permission_result = AccountSyncResult(
             account_id="123456789012",
             status="failed",
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(timezone.timezone.utc),
             error_message="AccessDenied: User does not have permission"
         )
         
         non_permission_result = AccountSyncResult(
             account_id="123456789012",
             status="failed",
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(timezone.timezone.utc),
             error_message="ServiceUnavailable: API temporarily unavailable"
         )
         

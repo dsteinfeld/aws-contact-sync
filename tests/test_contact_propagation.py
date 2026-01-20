@@ -7,7 +7,7 @@ Validates: Requirements 2.1, 2.2, 2.3
 import pytest
 import json
 import uuid
-from datetime import datetime, timezone, UTC
+from datetime import datetime, timezone, timezone.utc
 from unittest.mock import Mock, patch, MagicMock
 from hypothesis import given, strategies as st, settings, assume
 from typing import Dict, Any, List
@@ -85,7 +85,7 @@ class TestContactPropagationProperties:
                 import uuid
                 return SyncOperation(
                     sync_id=str(uuid.uuid4()),
-                    timestamp=datetime.now(UTC),
+                    timestamp=datetime.now(timezone.utc),
                     initiating_user=kwargs.get('initiating_user', 'test-user'),
                     contact_type=kwargs.get('contact_type', 'primary'),
                     source_account=kwargs.get('source_account', management_account_id),
@@ -249,7 +249,7 @@ class TestContactPropagationProperties:
                 import uuid
                 return SyncOperation(
                     sync_id=str(uuid.uuid4()),
-                    timestamp=datetime.now(UTC),
+                    timestamp=datetime.now(timezone.utc),
                     initiating_user=kwargs.get('initiating_user', 'test-user'),
                     contact_type=kwargs.get('contact_type', 'primary'),
                     source_account=kwargs.get('source_account', management_account_id),
@@ -409,14 +409,14 @@ class TestContactPropagationProperties:
                 email=f"member{i+1}@example.com",
                 status="ACTIVE",
                 joined_method="INVITED",
-                joined_timestamp=datetime.now(timezone.utc).isoformat()
+                joined_timestamp=datetime.now(timezone.timezone.utc).isoformat()
             ))
         return accounts
     
     def _generate_contact_change_event(self, management_account_id: str, contact_type: str) -> ContactChangeEvent:
         """Generate a contact change event for testing."""
         event_id = str(uuid.uuid4())
-        event_time = datetime.now(timezone.utc)
+        event_time = datetime.now(timezone.timezone.utc)
         initiating_user = "arn:aws:iam::123456789012:user/test-user"
         
         if contact_type == "primary":
