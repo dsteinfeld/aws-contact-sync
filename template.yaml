@@ -115,6 +115,10 @@ Resources:
                 eventSource: ['account.amazonaws.com']
                 eventName: ['PutContactInformation', 'PutAlternateContact']
                 recipientAccountId: [!Ref ManagementAccountId]
+                requestParameters:
+                  # Management account operations do NOT have accountId in requestParameters
+                  # This filters out member account changes made by the sync process
+                  accountId: [{"exists": false}]
       DeadLetterQueue:
         Type: SQS
         TargetArn: !GetAtt ContactSyncDLQ.Arn
