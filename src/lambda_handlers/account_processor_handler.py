@@ -318,6 +318,15 @@ class AccountProcessorHandler:
                 logger.info(f"Contact information differs for {account_id}, update needed")
                 return True
                 
+        except ClientError as e:
+            error_code = e.response.get('Error', {}).get('Code', 'Unknown')
+            # ResourceNotFoundException means no contact is set, so update is needed
+            if error_code == 'ResourceNotFoundException':
+                logger.info(f"No existing {contact_type} contact found for {account_id} (ResourceNotFoundException), update needed")
+                return True
+            logger.warning(f"Failed to retrieve current contact for {account_id}: {e}")
+            # If we can't get current contact due to other errors, assume update is needed
+            return True
         except Exception as e:
             logger.warning(f"Failed to retrieve current contact for {account_id}: {e}")
             # If we can't get current contact, assume update is needed
@@ -339,19 +348,20 @@ class AccountProcessorHandler:
         try:
             # Convert both to dictionaries for comparison
             if hasattr(current, '__dict__'):
-                current_dict = current.__dict__
+                current_dict = current.__dict__.copy()
             else:
                 from dataclasses import asdict
                 current_dict = asdict(current)
             
             if hasattr(new, '__dict__'):
-                new_dict = new.__dict__
+                new_dict = new.__dict__.copy()
             else:
                 from dataclasses import asdict
                 new_dict = asdict(new)
             
-            # Log the comparison for debugging
-            logger.debug(f"Comparing contacts - Current: {current_dict}, New: {new_dict}")
+            # Log the full contact data for debugging
+            logger.info(f"Comparing current contact: {json.dumps(current_dict, default=str)}")
+            logger.info(f"With new contact: {json.dumps(new_dict, default=str)}")
             
             # Compare all fields
             are_equal = current_dict == new_dict
@@ -363,6 +373,8 @@ class AccountProcessorHandler:
                     if current_dict.get(key) != new_dict.get(key):
                         diff_fields.append(f"{key}: '{current_dict.get(key)}' != '{new_dict.get(key)}'")
                 logger.info(f"Contact differences found: {', '.join(diff_fields)}")
+            else:
+                logger.info(f"Contacts are identical, no update needed")
             
             return are_equal
             
