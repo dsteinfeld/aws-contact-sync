@@ -167,11 +167,11 @@ class AccountProcessorHandler:
             if success:
                 result.status = "success"
                 result.timestamp = datetime.now(timezone.utc)
-                logger.info(f"Successfully updated {contact_type} contact for account {account_id}")
+                logger.info(f"Successfully processed {contact_type} contact for account {account_id}")
             else:
                 result.status = "failed"
                 result.timestamp = datetime.now(timezone.utc)
-                logger.error(f"Failed to update {contact_type} contact for account {account_id} after {result.retry_count} attempts")
+                logger.error(f"Failed to process {contact_type} contact for account {account_id} after {result.retry_count} attempts")
             
             # Update final state
             self.update_account_result(sync_id, result)
@@ -243,7 +243,7 @@ class AccountProcessorHandler:
                 
                 # Check if update is needed by comparing current contact info
                 if not self.is_update_needed(account_id, contact_type, contact_obj):
-                    logger.info(f"Contact information for {account_id} is already up to date")
+                    logger.info(f"No update needed for {account_id} - contact information already matches")
                     return True
                 
                 # Perform the contact update
@@ -313,7 +313,6 @@ class AccountProcessorHandler:
             
             # Compare contact information
             if self.contacts_are_equal(current_contact, new_contact):
-                logger.info(f"Contact information for {account_id} is already up to date")
                 return False
             else:
                 logger.info(f"Contact information differs for {account_id}, update needed")
@@ -351,8 +350,21 @@ class AccountProcessorHandler:
                 from dataclasses import asdict
                 new_dict = asdict(new)
             
+            # Log the comparison for debugging
+            logger.debug(f"Comparing contacts - Current: {current_dict}, New: {new_dict}")
+            
             # Compare all fields
-            return current_dict == new_dict
+            are_equal = current_dict == new_dict
+            
+            if not are_equal:
+                # Log differences
+                diff_fields = []
+                for key in set(list(current_dict.keys()) + list(new_dict.keys())):
+                    if current_dict.get(key) != new_dict.get(key):
+                        diff_fields.append(f"{key}: '{current_dict.get(key)}' != '{new_dict.get(key)}'")
+                logger.info(f"Contact differences found: {', '.join(diff_fields)}")
+            
+            return are_equal
             
         except Exception as e:
             logger.warning(f"Error comparing contacts: {e}")
@@ -380,7 +392,6 @@ class AccountProcessorHandler:
             else:
                 self.account_mgmt_client.put_alternate_contact(contact_obj, account_id)
             
-            logger.info(f"Successfully updated {contact_type} contact for account {account_id}")
             return True
             
         except ClientError as e:
