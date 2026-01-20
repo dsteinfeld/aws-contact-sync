@@ -125,7 +125,7 @@ class RecoveryManager:
                 # Success!
                 attempt = RecoveryAttempt(
                     attempt_number=attempt_num,
-                    timestamp=datetime.now(timezone.timezone.utc),
+                    timestamp=datetime.now(timezone.utc),
                     success=True,
                     delay_before_attempt=0.0 if attempt_num == 1 else attempts[-1].delay_before_attempt
                 )
@@ -151,7 +151,7 @@ class RecoveryManager:
                 
                 attempt = RecoveryAttempt(
                     attempt_number=attempt_num,
-                    timestamp=datetime.now(timezone.timezone.utc),
+                    timestamp=datetime.now(timezone.utc),
                     error=e,
                     success=False,
                     recovery_action="circuit_breaker_open"
@@ -180,7 +180,7 @@ class RecoveryManager:
                 # Record the attempt
                 attempt = RecoveryAttempt(
                     attempt_number=attempt_num,
-                    timestamp=datetime.now(timezone.timezone.utc),
+                    timestamp=datetime.now(timezone.utc),
                     error=e,
                     success=False,
                     recovery_action=classification.recovery_action

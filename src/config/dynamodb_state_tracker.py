@@ -143,7 +143,8 @@ class DynamoDBStateTracker:
             return sync_operation
             
         except (ClientError, BotoCoreError) as e:
-            raise ClientError(f"Failed to create sync operation: {e}")
+            logger.error(f"Failed to create sync operation: {e}")
+            raise
         except Exception as e:
             raise RuntimeError(f"Failed to create sync operation: {e}")
     
@@ -181,7 +182,8 @@ class DynamoDBStateTracker:
         except ClientError as e:
             if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
                 raise ValueError(f"Sync operation {sync_id} does not exist")
-            raise ClientError(f"Failed to update sync status: {e}")
+            logger.error(f"Failed to update sync status: {e}")
+            raise
         except (BotoCoreError, Exception) as e:
             raise RuntimeError(f"Failed to update sync status: {e}")
     
@@ -232,7 +234,8 @@ class DynamoDBStateTracker:
             return True
             
         except ClientError as e:
-            raise ClientError(f"Failed to add account result: {e}")
+            logger.error(f"Failed to add account result: {e}")
+            raise
         except (BotoCoreError, Exception) as e:
             raise RuntimeError(f"Failed to add account result: {e}")
     
@@ -286,7 +289,8 @@ class DynamoDBStateTracker:
             )
             
         except ClientError as e:
-            raise ClientError(f"Failed to get sync operation: {e}")
+            logger.error(f"Failed to get sync operation: {e}")
+            raise
         except (BotoCoreError, Exception) as e:
             raise RuntimeError(f"Failed to get sync operation: {e}")
     
@@ -377,7 +381,8 @@ class DynamoDBStateTracker:
             return operations
             
         except ClientError as e:
-            raise ClientError(f"Failed to query sync history: {e}")
+            logger.error(f"Failed to query sync history: {e}")
+            raise
         except (BotoCoreError, Exception) as e:
             raise RuntimeError(f"Failed to query sync history: {e}")
     

@@ -72,7 +72,8 @@ class DynamoDBConfigManager(ConfigManager):
         except ClientError as e:
             if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
                 raise ValueError("Configuration already exists. Use update_config instead.")
-            raise ClientError(f"Failed to create configuration: {e}")
+            logger.error(f"Failed to create configuration: {e}")
+            raise
         except (BotoCoreError, Exception) as e:
             raise RuntimeError(f"Failed to create configuration: {e}")
     
@@ -103,7 +104,8 @@ class DynamoDBConfigManager(ConfigManager):
             return config
             
         except ClientError as e:
-            raise ClientError(f"Failed to read configuration: {e}")
+            logger.error(f"Failed to read configuration: {e}")
+            raise
         except (json.JSONDecodeError, ValueError) as e:
             raise ValueError(f"Invalid configuration data in storage: {e}")
         except (BotoCoreError, Exception) as e:
@@ -165,7 +167,8 @@ class DynamoDBConfigManager(ConfigManager):
         except ClientError as e:
             if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
                 raise ValueError("Configuration does not exist. Use create_config instead.")
-            raise ClientError(f"Failed to update configuration: {e}")
+            logger.error(f"Failed to update configuration: {e}")
+            raise
         except (BotoCoreError, Exception) as e:
             raise RuntimeError(f"Failed to update configuration: {e}")
     
@@ -190,7 +193,8 @@ class DynamoDBConfigManager(ConfigManager):
             return 'Attributes' in response
             
         except ClientError as e:
-            raise ClientError(f"Failed to delete configuration: {e}")
+            logger.error(f"Failed to delete configuration: {e}")
+            raise
         except (BotoCoreError, Exception) as e:
             raise RuntimeError(f"Failed to delete configuration: {e}")
     
