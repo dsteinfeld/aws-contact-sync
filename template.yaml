@@ -116,10 +116,11 @@ Resources:
                 eventSource: ['account.amazonaws.com']
                 eventName: ['PutContactInformation', 'PutAlternateContact']
                 recipientAccountId: [!Ref ManagementAccountId]
-                # Only trigger on management account changes (no accountId parameter)
-                # Member account changes will have accountId in requestParameters
+                # Only trigger on management account changes (no AccountId parameter)
+                # Member account changes will have AccountId in requestParameters
+                # Note: Field name is case-sensitive - it's "AccountId" not "accountId"
                 requestParameters:
-                  accountId:
+                  AccountId:
                     - exists: false
       DeadLetterQueue:
         Type: SQS
