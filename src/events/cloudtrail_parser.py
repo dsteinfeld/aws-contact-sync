@@ -19,7 +19,8 @@ class ContactChangeEvent:
     initiating_user: str
     source_account: str
     contact_type: str  # "primary", "BILLING", "OPERATIONS", "SECURITY"
-    contact_data: Union[ContactInformation, AlternateContact]
+    # NOTE: contact_data is NOT included because CloudTrail obfuscates the actual values with ***
+    # The Lambda must query the management account to get the real contact data
     is_management_account_change: bool
 
     def __post_init__(self):
@@ -99,11 +100,22 @@ class CloudTrailEventParser:
             initiating_user = self._extract_user_identity(cloudtrail_event)
             source_account = recipient_account_id
 
-            # Parse contact data based on event type
+            # Determine contact type from event
+            # NOTE: We do NOT parse the contact data from the event because CloudTrail
+            # obfuscates the actual values with ***. The Lambda will query the management
+            # account to get the real contact data.
             if event_name == "PutContactInformation":
-                contact_data, contact_type = self._parse_contact_information(request_params)
+                contact_type = "primary"
             elif event_name == "PutAlternateContact":
-                contact_data, contact_type = self._parse_alternate_contact(request_params)
+                # Extract the alternate contact type
+                contact_type = (
+                    request_params.get("AlternateContactType") or 
+                    request_params.get("alternateContactType")
+                )
+                if not contact_type:
+                    raise ValueError("Missing AlternateContactType in request parameters")
+                if contact_type not in ["BILLING", "OPERATIONS", "SECURITY"]:
+                    raise ValueError(f"Invalid alternate contact type: {contact_type}")
             else:
                 logger.error(f"Unexpected event name: {event_name}")
                 return None
@@ -115,7 +127,6 @@ class CloudTrailEventParser:
                 initiating_user=initiating_user,
                 source_account=source_account,
                 contact_type=contact_type,
-                contact_data=contact_data,
                 is_management_account_change=True
             )
 
@@ -151,120 +162,6 @@ class CloudTrailEventParser:
             return f"{user_identity['type']}:{user_identity['principalId']}"
         else:
             return "unknown"
-
-    def _parse_contact_information(self, request_params: Dict[str, Any]) -> tuple[ContactInformation, str]:
-        """Parse PutContactInformation request parameters."""
-        # AWS may send contact fields directly in requestParameters or nested under contactInformation
-        if "contactInformation" in request_params:
-            # Nested format
-            contact_info = request_params["contactInformation"]
-        else:
-            # Direct format
-            contact_info = request_params
-
-        if not contact_info:
-            raise ValueError("Missing contactInformation in request parameters")
-
-        # Extract required fields - handle both camelCase and PascalCase
-        try:
-            contact_data = ContactInformation(
-                address_line1=(
-                    contact_info.get("AddressLine1") or 
-                    contact_info.get("addressLine1")
-                ),
-                city=(
-                    contact_info.get("City") or 
-                    contact_info.get("city")
-                ),
-                country_code=(
-                    contact_info.get("CountryCode") or 
-                    contact_info.get("countryCode")
-                ),
-                full_name=(
-                    contact_info.get("FullName") or 
-                    contact_info.get("fullName")
-                ),
-                phone_number=(
-                    contact_info.get("PhoneNumber") or 
-                    contact_info.get("phoneNumber")
-                ),
-                postal_code=(
-                    contact_info.get("PostalCode") or 
-                    contact_info.get("postalCode")
-                ),
-                address_line2=(
-                    contact_info.get("AddressLine2") or 
-                    contact_info.get("addressLine2")
-                ),
-                address_line3=(
-                    contact_info.get("AddressLine3") or 
-                    contact_info.get("addressLine3")
-                ),
-                company_name=(
-                    contact_info.get("CompanyName") or 
-                    contact_info.get("companyName")
-                ),
-                district_or_county=(
-                    contact_info.get("DistrictOrCounty") or 
-                    contact_info.get("districtOrCounty")
-                ),
-                state_or_region=(
-                    contact_info.get("StateOrRegion") or 
-                    contact_info.get("stateOrRegion")
-                ),
-                website_url=(
-                    contact_info.get("WebsiteUrl") or 
-                    contact_info.get("websiteUrl")
-                )
-            )
-            return contact_data, "primary"
-        except (KeyError, TypeError) as e:
-            raise ValueError(f"Missing required contact information field: {e}")
-
-    def _parse_alternate_contact(self, request_params: Dict[str, Any]) -> tuple[AlternateContact, str]:
-        """Parse PutAlternateContact request parameters."""
-        # AWS sends alternate contact fields directly in requestParameters, not nested
-        # Check for both formats for compatibility
-        if "alternateContact" in request_params:
-            # Nested format (older or different API version)
-            alternate_contact = request_params["alternateContact"]
-            contact_type = request_params.get("alternateContactType") or alternate_contact.get("contactType")
-        else:
-            # Direct format (current AWS API)
-            alternate_contact = request_params
-            contact_type = request_params.get("AlternateContactType") or request_params.get("alternateContactType")
-        
-        if not contact_type:
-            raise ValueError("Missing alternateContactType in request parameters")
-
-        # Validate contact type
-        if contact_type not in ["BILLING", "OPERATIONS", "SECURITY"]:
-            raise ValueError(f"Invalid alternate contact type: {contact_type}")
-
-        try:
-            # Handle both camelCase and PascalCase field names
-            contact_data = AlternateContact(
-                contact_type=contact_type,
-                email_address=(
-                    alternate_contact.get("EmailAddress") or 
-                    alternate_contact.get("emailAddress")
-                ),
-                name=(
-                    alternate_contact.get("Name") or 
-                    alternate_contact.get("name")
-                ),
-                phone_number=(
-                    alternate_contact.get("PhoneNumber") or 
-                    alternate_contact.get("phoneNumber")
-                ),
-                title=(
-                    alternate_contact.get("Title") or 
-                    alternate_contact.get("title")
-                )
-            )
-            return contact_data, contact_type
-        except (KeyError, TypeError) as e:
-            raise ValueError(f"Missing required alternate contact field: {e}")
 
     def parse_eventbridge_record(self, eventbridge_record: Dict[str, Any]) -> Optional[ContactChangeEvent]:
         """

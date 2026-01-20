@@ -51,6 +51,10 @@ class ContactSyncHandler:
         self.event_parser = CloudTrailEventParser(management_account_id)
         self.organizations_client = OrganizationsClient()
         
+        # Initialize Account Management client to query contact data
+        from ..aws_clients.account_management import AccountManagementClient
+        self.account_mgmt_client = AccountManagementClient()
+        
         # Initialize configuration and state managers
         self.config_manager = DynamoDBConfigManager(
             table_name=config_table_name or os.environ.get('CONFIG_TABLE_NAME', 'aws-contact-sync-config')
@@ -258,6 +262,37 @@ class ContactSyncHandler:
             # Return all accounts if filtering fails
             return account_ids
     
+    def get_contact_data_from_management_account(self, contact_type: str):
+        """
+        Retrieve the actual contact data from the management account.
+        
+        CloudTrail events contain obfuscated contact data (***), so we must
+        query the management account to get the real values.
+        
+        Args:
+            contact_type: Type of contact ("primary", "BILLING", "OPERATIONS", "SECURITY")
+            
+        Returns:
+            ContactInformation or AlternateContact object with real data
+            
+        Raises:
+            Exception: If unable to retrieve contact data
+        """
+        try:
+            if contact_type == "primary":
+                logger.info("Retrieving primary contact information from management account")
+                contact_data = self.account_mgmt_client.get_contact_information()
+            else:
+                logger.info(f"Retrieving {contact_type} alternate contact from management account")
+                contact_data = self.account_mgmt_client.get_alternate_contact(contact_type)
+            
+            logger.debug(f"Successfully retrieved {contact_type} contact data from management account")
+            return contact_data
+            
+        except Exception as e:
+            logger.error(f"Failed to retrieve {contact_type} contact data from management account: {e}")
+            raise
+    
     def create_sync_operation(self, contact_event: ContactChangeEvent, target_accounts: List[str]) -> SyncOperation:
         """
         Create a sync operation record.
@@ -270,6 +305,11 @@ class ContactSyncHandler:
             SyncOperation object
         """
         sync_id = str(uuid.uuid4())
+        
+        # Query the management account to get the REAL contact data
+        # (CloudTrail events contain obfuscated data with ***)
+        logger.info(f"Querying management account for {contact_event.contact_type} contact data")
+        contact_data = self.get_contact_data_from_management_account(contact_event.contact_type)
         
         # Initialize results for all target accounts
         results = {}
@@ -288,7 +328,7 @@ class ContactSyncHandler:
             source_account=contact_event.source_account,
             target_accounts=target_accounts,
             status="pending",
-            contact_data=contact_event.contact_data,
+            contact_data=contact_data,  # Use the real data from management account
             results=results
         )
         
