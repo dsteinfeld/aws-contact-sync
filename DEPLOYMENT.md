@@ -49,8 +49,9 @@ The deployment user/role must have the following permissions:
 ```bash
 git clone <repository-url>
 cd aws-contact-sync
-chmod +x scripts/*.sh
 ```
+
+**Note:** On Linux/macOS, if scripts don't have execute permissions, use `bash scripts/scriptname.sh` instead of `./scripts/scriptname.sh`
 
 ### 2. Configure AWS Credentials
 
@@ -65,14 +66,14 @@ export AWS_PROFILE=your-profile-name
 ### 3. Deploy to Production
 
 ```bash
-./scripts/deploy.sh \
+bash scripts/deploy.sh \
   --environment prod \
   --account-id 123456789012 \
   --notification-email admin@yourcompany.com \
   --region us-east-1
 
 # Or with a specific AWS profile
-./scripts/deploy.sh \
+bash scripts/deploy.sh \
   --environment prod \
   --account-id 123456789012 \
   --notification-email admin@yourcompany.com \
@@ -83,10 +84,10 @@ export AWS_PROFILE=your-profile-name
 ### 4. Validate Deployment
 
 ```bash
-./scripts/validate.sh --environment prod
+bash scripts/validate.sh --environment prod
 
 # Or with a specific AWS profile
-./scripts/validate.sh --environment prod --profile my-aws-profile
+bash scripts/validate.sh --environment prod --profile my-aws-profile
 ```
 
 ## Environment-Specific Deployment

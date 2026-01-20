@@ -128,7 +128,6 @@ Resources:
       CodeUri: src/
       Handler: lambda_handlers.account_processor_handler.lambda_handler
       Timeout: 900  # 15 minutes for retry logic
-      ReservedConcurrentExecutions: 10  # Limit concurrent executions to avoid API throttling
       Environment:
         Variables:
           NOTIFICATION_FUNCTION_NAME: !Ref NotificationHandler
