@@ -42,7 +42,7 @@ view_config() {
         --profile "$PROFILE" \
         --region "$REGION" \
         --query 'Item.config_data.S' \
-        --output text | python -m json.tool
+        --output text | python3 -m json.tool
     echo ""
 }
 
