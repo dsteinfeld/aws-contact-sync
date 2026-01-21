@@ -284,7 +284,10 @@ class DynamoDBConfigManager(ConfigManager):
                 logger.info(f"No configuration found, syncing all contact types (including {contact_type})")
                 return True
             
-            should_sync = contact_type in current_config.contact_types
+            # Case-insensitive comparison
+            contact_type_lower = contact_type.lower()
+            configured_types_lower = [ct.lower() for ct in current_config.contact_types]
+            should_sync = contact_type_lower in configured_types_lower
             logger.info(f"Configuration check: contact_type={contact_type}, configured_types={current_config.contact_types}, should_sync={should_sync}")
             return should_sync
         except ValueError:

@@ -50,7 +50,8 @@ class SyncConfig:
         """Validate configuration."""
         valid_contact_types = ["primary", "billing", "operations", "security"]
         for contact_type in self.contact_types:
-            if contact_type not in valid_contact_types:
+            # Case-insensitive comparison
+            if contact_type.lower() not in valid_contact_types:
                 raise ValueError(f"Invalid contact_type: {contact_type}")
         
         # Validate account IDs format (basic validation)
