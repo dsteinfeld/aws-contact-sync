@@ -303,7 +303,9 @@ deploy_application() {
     fi
     
     # Add confirmation flag
-    if [[ "$NO_CONFIRM" == false ]]; then
+    if [[ "$NO_CONFIRM" == true ]]; then
+        deploy_params+=("--no-confirm-changeset")
+    else
         deploy_params+=("--confirm-changeset")
     fi
     
