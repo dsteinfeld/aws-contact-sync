@@ -85,20 +85,75 @@ case $choice in
             --output text | python3 -c "import sys, json; data=json.load(sys.stdin); print(json.dumps(data['contact_types']))")
         
         echo "Current contact types: $current_contact_types"
-        read -p "Enter account ID to exclude: " account_id
-        update_config "$current_contact_types" "[\"$account_id\"]"
-        view_config
-        echo "✓ Configuration set to exclude account $account_id"
-        echo "✓ Contact type filtering preserved"
-        echo "Now make a contact change - account $account_id should NOT be updated"
+        echo ""
+        echo "Enter account ID(s) to exclude:"
+        echo "  - Single account: 123456789012"
+        echo "  - Multiple accounts (comma-separated): 123456789012,987654321098"
+        echo "  - Press Enter with no input to clear all exclusions"
+        read -p "> " account_input
+        
+        if [ -z "$account_input" ]; then
+            # Empty input - clear exclusions
+            update_config "$current_contact_types" "[]"
+            view_config
+            echo "✓ Account exclusions cleared"
+            echo "✓ Contact type filtering preserved"
+        else
+            # Convert comma-separated input to JSON array
+            # Remove spaces and split by comma
+            account_input=$(echo "$account_input" | tr -d ' ')
+            IFS=',' read -ra account_array <<< "$account_input"
+            
+            # Build JSON array
+            excluded_accounts="["
+            for i in "${!account_array[@]}"; do
+                if [ $i -gt 0 ]; then
+                    excluded_accounts+=","
+                fi
+                excluded_accounts+="\"${account_array[$i]}\""
+            done
+            excluded_accounts+="]"
+            
+            update_config "$current_contact_types" "$excluded_accounts"
+            view_config
+            echo "✓ Configuration set to exclude account(s): $account_input"
+            echo "✓ Contact type filtering preserved"
+            echo "Now make a contact change - excluded account(s) should NOT be updated"
+        fi
         ;;
     4)
-        read -p "Enter account ID to exclude: " account_id
-        update_config '["BILLING"]' "[\"$account_id\"]"
-        view_config
-        echo "✓ Configuration set to sync BILLING only AND exclude account $account_id"
-        echo "Now make a BILLING contact change - all accounts EXCEPT $account_id should be updated"
-        echo "Make an OPERATIONS contact change - NO accounts should be updated"
+        echo "Enter account ID(s) to exclude:"
+        echo "  - Single account: 123456789012"
+        echo "  - Multiple accounts (comma-separated): 123456789012,987654321098"
+        echo "  - Press Enter with no input to clear all exclusions"
+        read -p "> " account_input
+        
+        if [ -z "$account_input" ]; then
+            # Empty input - clear exclusions
+            update_config '["BILLING"]' "[]"
+            view_config
+            echo "✓ Configuration set to sync BILLING only with no account exclusions"
+        else
+            # Convert comma-separated input to JSON array
+            account_input=$(echo "$account_input" | tr -d ' ')
+            IFS=',' read -ra account_array <<< "$account_input"
+            
+            # Build JSON array
+            excluded_accounts="["
+            for i in "${!account_array[@]}"; do
+                if [ $i -gt 0 ]; then
+                    excluded_accounts+=","
+                fi
+                excluded_accounts+="\"${account_array[$i]}\""
+            done
+            excluded_accounts+="]"
+            
+            update_config '["BILLING"]' "$excluded_accounts"
+            view_config
+            echo "✓ Configuration set to sync BILLING only AND exclude account(s): $account_input"
+            echo "Now make a BILLING contact change - all accounts EXCEPT excluded ones should be updated"
+            echo "Make an OPERATIONS contact change - NO accounts should be updated"
+        fi
         ;;
     5)
         view_config
