@@ -34,8 +34,8 @@ Globals:
     Environment:
       Variables:
         MANAGEMENT_ACCOUNT_ID: !Ref ManagementAccountId
-        CONFIG_TABLE_NAME: !Ref ConfigTable
-        STATE_TABLE_NAME: !Ref StateTable
+        CONFIG_TABLE_NAME: !Sub '${AWS::StackName}-config'
+        STATE_TABLE_NAME: !Sub '${AWS::StackName}-state'
         ENVIRONMENT: !Ref Environment
         LOG_LEVEL: INFO
     Layers:
@@ -137,6 +137,8 @@ Resources:
       Timeout: 900  # 15 minutes for retry logic
       Environment:
         Variables:
+          MANAGEMENT_ACCOUNT_ID: !Ref ManagementAccountId
+          STATE_TABLE_NAME: !Sub '${AWS::StackName}-state'
           NOTIFICATION_FUNCTION_NAME: !Ref NotificationHandler
       Policies:
         - Version: '2012-10-17'

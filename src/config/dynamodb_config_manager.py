@@ -93,9 +93,11 @@ class DynamoDBConfigManager(ConfigManager):
         try:
             table = self._get_table()
             
+            logger.info(f"Reading config from DynamoDB table: {self.table_name}")
             response = table.get_item(Key={'config_key': 'current'})
             
             if 'Item' not in response:
+                logger.warning("No configuration found in DynamoDB (no Item in response)")
                 return None
             
             item = response['Item']
@@ -110,11 +112,15 @@ class DynamoDBConfigManager(ConfigManager):
             return config
             
         except ClientError as e:
-            logger.error(f"Failed to read configuration: {e}")
+            logger.error(f"Failed to read configuration from DynamoDB: {e}")
+            logger.error(f"Error code: {e.response.get('Error', {}).get('Code', 'Unknown')}")
+            logger.error(f"Error message: {e.response.get('Error', {}).get('Message', 'Unknown')}")
             raise
         except (json.JSONDecodeError, ValueError) as e:
+            logger.error(f"Invalid configuration data in storage: {e}")
             raise ValueError(f"Invalid configuration data in storage: {e}")
         except (BotoCoreError, Exception) as e:
+            logger.error(f"Unexpected error reading configuration: {e}")
             raise RuntimeError(f"Failed to read configuration: {e}")
     
     def update_config(self, updates: Dict[str, Any]) -> SyncConfig:
