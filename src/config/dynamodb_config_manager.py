@@ -243,8 +243,12 @@ class DynamoDBConfigManager(ConfigManager):
             bool: True if account should be excluded
         """
         try:
-            excluded_accounts = self.get_excluded_accounts()
-            return account_id in excluded_accounts
+            # Always read fresh config from DynamoDB to avoid stale cache
+            current_config = self.read_config()
+            if current_config is None:
+                # If no configuration, don't exclude any accounts
+                return False
+            return account_id in current_config.excluded_accounts
         except ValueError:
             # If no configuration, don't exclude any accounts
             return False
@@ -259,8 +263,12 @@ class DynamoDBConfigManager(ConfigManager):
             bool: True if contact type should be synchronized
         """
         try:
-            contact_types = self.get_contact_type_filter()
-            return contact_type in contact_types
+            # Always read fresh config from DynamoDB to avoid stale cache
+            current_config = self.read_config()
+            if current_config is None:
+                # If no configuration, sync all contact types by default
+                return True
+            return contact_type in current_config.contact_types
         except ValueError:
             # If no configuration, sync all contact types by default
             return True

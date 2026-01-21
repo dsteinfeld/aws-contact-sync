@@ -314,7 +314,11 @@ class AccountManagementClient:
             )
             
         except Exception as e:
-            logger.error(f"Failed to get {contact_type} alternate contact for account {account_id}: {e}")
+            # ResourceNotFoundException is expected when no contact exists - not an error
+            if isinstance(e, ClientError) and e.response.get('Error', {}).get('Code') == 'ResourceNotFoundException':
+                logger.info(f"No {contact_type} alternate contact found for account {account_id}")
+            else:
+                logger.error(f"Failed to get {contact_type} alternate contact for account {account_id}: {e}")
             raise
     
     def put_alternate_contact(self, contact: AlternateContact, account_id: Optional[str] = None) -> None:
