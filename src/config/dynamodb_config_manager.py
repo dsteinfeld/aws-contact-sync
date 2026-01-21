@@ -247,10 +247,15 @@ class DynamoDBConfigManager(ConfigManager):
             current_config = self.read_config()
             if current_config is None:
                 # If no configuration, don't exclude any accounts
+                logger.info(f"No configuration found, not excluding account {account_id}")
                 return False
-            return account_id in current_config.excluded_accounts
+            
+            is_excluded = account_id in current_config.excluded_accounts
+            logger.info(f"Configuration check: account_id={account_id}, excluded_accounts={current_config.excluded_accounts}, is_excluded={is_excluded}")
+            return is_excluded
         except ValueError:
             # If no configuration, don't exclude any accounts
+            logger.warning(f"Error reading configuration, not excluding any accounts (including {account_id})")
             return False
     
     def should_sync_contact_type(self, contact_type: str) -> bool:
@@ -267,8 +272,13 @@ class DynamoDBConfigManager(ConfigManager):
             current_config = self.read_config()
             if current_config is None:
                 # If no configuration, sync all contact types by default
+                logger.info(f"No configuration found, syncing all contact types (including {contact_type})")
                 return True
-            return contact_type in current_config.contact_types
+            
+            should_sync = contact_type in current_config.contact_types
+            logger.info(f"Configuration check: contact_type={contact_type}, configured_types={current_config.contact_types}, should_sync={should_sync}")
+            return should_sync
         except ValueError:
             # If no configuration, sync all contact types by default
+            logger.warning(f"Error reading configuration, syncing all contact types by default (including {contact_type})")
             return True
