@@ -100,10 +100,10 @@ def handle_dynamodb_stream(
         records = event.get('Records', [])
         logger.info(f"Processing {len(records)} DynamoDB Stream records")
         
-        # Track unique sync_ids that may be complete
-        sync_ids_to_check: Set[str] = set()
+        # Track the latest state for each sync_id from stream records
+        latest_states: Dict[str, Dict[str, Any]] = {}
         
-        # Process each stream record
+        # Process each stream record to get the latest state
         for record in records:
             event_name = record.get('eventName')
             
@@ -111,7 +111,7 @@ def handle_dynamodb_stream(
             if event_name != 'MODIFY':
                 continue
             
-            # Extract sync_id from the record
+            # Extract sync_id and state from the record
             dynamodb_data = record.get('dynamodb', {})
             new_image = dynamodb_data.get('NewImage', {})
             
@@ -124,21 +124,24 @@ def handle_dynamodb_stream(
                 continue
             
             logger.info(f"Detected state change for sync operation {sync_id}")
-            sync_ids_to_check.add(sync_id)
+            
+            # Store the latest NewImage for this sync_id
+            # Later records in the batch override earlier ones
+            latest_states[sync_id] = new_image
         
-        # Check each sync operation to see if it's complete
+        # Check each sync operation using the latest stream state
         notifications_sent = 0
-        for sync_id in sync_ids_to_check:
-            if check_and_notify_if_complete(notification_handler, state_tracker, sync_id):
+        for sync_id, new_image in latest_states.items():
+            if check_and_notify_if_complete_from_stream(notification_handler, state_tracker, sync_id, new_image):
                 notifications_sent += 1
         
-        logger.info(f"Processed {len(sync_ids_to_check)} sync operations, sent {notifications_sent} notifications")
+        logger.info(f"Processed {len(latest_states)} sync operations, sent {notifications_sent} notifications")
         
         return {
             'statusCode': 200,
             'body': json.dumps({
                 'records_processed': len(records),
-                'sync_operations_checked': len(sync_ids_to_check),
+                'sync_operations_checked': len(latest_states),
                 'notifications_sent': notifications_sent
             })
         }
@@ -223,6 +226,87 @@ def check_and_notify_if_complete(
         
     except Exception as e:
         logger.error(f"Error checking sync completion for {sync_id}: {e}", exc_info=True)
+        return False
+
+
+def check_and_notify_if_complete_from_stream(
+    notification_handler: NotificationHandler,
+    state_tracker: DynamoDBStateTracker,
+    sync_id: str,
+    new_image: Dict[str, Any]
+) -> bool:
+    """Check if a sync operation is complete using DynamoDB Stream data.
+    
+    This function uses the NewImage from the stream record directly instead of
+    querying DynamoDB, which ensures we have the most up-to-date state.
+    
+    Args:
+        notification_handler: Notification handler instance
+        state_tracker: State tracker for updating status
+        sync_id: Sync operation ID to check
+        new_image: DynamoDB Stream NewImage containing the latest state
+        
+    Returns:
+        True if notification was sent, False otherwise
+    """
+    try:
+        # Parse target accounts from stream data
+        target_accounts_list = new_image.get('target_accounts', {}).get('L', [])
+        target_accounts = set([item.get('S', '') for item in target_accounts_list])
+        
+        # Parse results from stream data
+        results_json = new_image.get('results', {}).get('S', '{}')
+        results_data = json.loads(results_json)
+        
+        # Check completion status
+        completed_accounts = set()
+        pending_accounts = []
+        
+        for account_id in target_accounts:
+            result = results_data.get(account_id)
+            
+            if result and result.get('status') != 'pending':
+                completed_accounts.add(account_id)
+            else:
+                pending_accounts.append(account_id)
+        
+        # If there are still pending accounts, don't send notification yet
+        if pending_accounts:
+            logger.info(
+                f"Sync operation {sync_id} not yet complete: "
+                f"{len(completed_accounts)}/{len(target_accounts)} accounts finished, "
+                f"waiting on: {pending_accounts}"
+            )
+            return False
+        
+        # All accounts are complete - retrieve full sync operation for notification
+        logger.info(
+            f"Sync operation {sync_id} is complete: "
+            f"{len(completed_accounts)}/{len(target_accounts)} accounts finished"
+        )
+        
+        # Now query DynamoDB for the full sync operation to send notification
+        sync_operation = state_tracker.get_sync_operation(sync_id)
+        
+        if not sync_operation:
+            logger.error(f"Sync operation {sync_id} not found in database after completion detected")
+            return False
+        
+        # Update overall sync status to completed
+        state_tracker.update_sync_status(sync_id, "completed")
+        
+        # Send aggregated notification
+        success = notification_handler.handle_sync_completion(sync_operation)
+        
+        if success:
+            logger.info(f"Successfully sent completion notification for sync {sync_id}")
+        else:
+            logger.warning(f"Failed to send completion notification for sync {sync_id}")
+        
+        return success
+        
+    except Exception as e:
+        logger.error(f"Error checking sync completion from stream for {sync_id}: {e}", exc_info=True)
         return False
 
 
