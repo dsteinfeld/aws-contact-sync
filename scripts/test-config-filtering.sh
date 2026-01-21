@@ -54,10 +54,11 @@ view_config() {
 echo "Choose a test scenario:"
 echo "1. Reset to full sync (all contact types, no exclusions)"
 echo "2. Filter to BILLING only"
-echo "3. Exclude one account (you'll need to provide account ID)"
-echo "4. View current configuration"
+echo "3. Exclude one account (preserves current contact type filter)"
+echo "4. Filter to BILLING only AND exclude one account"
+echo "5. View current configuration"
 echo ""
-read -p "Enter choice (1-4): " choice
+read -p "Enter choice (1-5): " choice
 
 case $choice in
     1)
@@ -73,13 +74,33 @@ case $choice in
         echo "Then make a BILLING contact change - it SHOULD trigger sync"
         ;;
     3)
+        # First, get the current contact_types from the config
+        echo "Reading current contact types..."
+        current_contact_types=$(aws dynamodb get-item \
+            --table-name "$CONFIG_TABLE" \
+            --key '{"config_key":{"S":"current"}}' \
+            --profile "$PROFILE" \
+            --region "$REGION" \
+            --query 'Item.config_data.S' \
+            --output text | python3 -c "import sys, json; data=json.load(sys.stdin); print(json.dumps(data['contact_types']))")
+        
+        echo "Current contact types: $current_contact_types"
         read -p "Enter account ID to exclude: " account_id
-        update_config '["primary","BILLING","OPERATIONS","SECURITY"]' "[\"$account_id\"]"
+        update_config "$current_contact_types" "[\"$account_id\"]"
         view_config
         echo "✓ Configuration set to exclude account $account_id"
+        echo "✓ Contact type filtering preserved"
         echo "Now make a contact change - account $account_id should NOT be updated"
         ;;
     4)
+        read -p "Enter account ID to exclude: " account_id
+        update_config '["BILLING"]' "[\"$account_id\"]"
+        view_config
+        echo "✓ Configuration set to sync BILLING only AND exclude account $account_id"
+        echo "Now make a BILLING contact change - all accounts EXCEPT $account_id should be updated"
+        echo "Make an OPERATIONS contact change - NO accounts should be updated"
+        ;;
+    5)
         view_config
         ;;
     *)
