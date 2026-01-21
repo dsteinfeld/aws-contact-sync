@@ -173,6 +173,11 @@ def check_and_notify_if_complete(
         True if notification was sent, False otherwise
     """
     try:
+        # Add a small delay to allow DynamoDB to become consistent
+        # This helps ensure we read the latest state after rapid updates
+        import time
+        time.sleep(0.5)
+        
         # Retrieve the full sync operation
         sync_operation = state_tracker.get_sync_operation(sync_id)
         
