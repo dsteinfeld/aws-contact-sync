@@ -69,7 +69,7 @@ class DynamoDBConfigManager(ConfigManager):
                 ConditionExpression='attribute_not_exists(config_key)'
             )
             
-            self._config = config
+            # DO NOT cache config - always read fresh from DynamoDB
             return config
             
         except ClientError as e:
@@ -101,9 +101,12 @@ class DynamoDBConfigManager(ConfigManager):
             item = response['Item']
             config_data = json.loads(item['config_data'])
             
+            # Log the raw config data for debugging
+            logger.info(f"Read config from DynamoDB: {config_data}")
+            
             # Validate and load configuration
             config = SyncConfig.from_dict(config_data)
-            self._config = config
+            # DO NOT cache config - always read fresh from DynamoDB
             return config
             
         except ClientError as e:
@@ -164,7 +167,7 @@ class DynamoDBConfigManager(ConfigManager):
                 ConditionExpression='attribute_exists(config_key)'
             )
             
-            self._config = updated_config
+            # DO NOT cache config - always read fresh from DynamoDB
             return updated_config
             
         except ClientError as e:
@@ -192,7 +195,7 @@ class DynamoDBConfigManager(ConfigManager):
                 ReturnValues='ALL_OLD'
             )
             
-            self._config = None
+            # DO NOT cache config - always read fresh from DynamoDB
             return 'Attributes' in response
             
         except ClientError as e:
