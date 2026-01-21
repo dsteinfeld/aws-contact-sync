@@ -184,6 +184,10 @@ Resources:
       Description: 'Handles notification delivery for sync operations'
       CodeUri: .
       Handler: src.lambda_handlers.notification_handler.lambda_handler
+      Environment:
+        Variables:
+          CONFIG_TABLE_NAME: !Sub '${AWS::StackName}-config'
+          STATE_TABLE_NAME: !Sub '${AWS::StackName}-state'
       Policies:
         - Version: '2012-10-17'
           Statement:
@@ -193,7 +197,13 @@ Resources:
                 - dynamodb:Query
               Resource:
                 - !GetAtt ConfigTable.Arn
+                - !GetAtt StateTable.Arn
                 - !Sub '${ConfigTable.Arn}/index/*'
+                - !Sub '${StateTable.Arn}/index/*'
+            - Effect: Allow
+              Action:
+                - account:GetAlternateContact
+              Resource: '*'
             - Effect: Allow
               Action:
                 - sns:Publish
@@ -210,6 +220,17 @@ Resources:
                 - logs:CreateLogStream
                 - logs:PutLogEvents
               Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*'
+      Events:
+        StateTableStream:
+          Type: DynamoDB
+          Properties:
+            Stream: !GetAtt StateTable.StreamArn
+            StartingPosition: TRIM_HORIZON
+            BatchSize: 10
+            MaximumBatchingWindowInSeconds: 5
+            FilterCriteria:
+              Filters:
+                - Pattern: '{"eventName": ["MODIFY"], "dynamodb": {"NewImage": {"status": {"S": [{"exists": true}]}}}}'
 
   # DynamoDB Table for Configuration Management
   ConfigTable:
@@ -267,6 +288,8 @@ Resources:
       TimeToLiveSpecification:
         AttributeName: ttl
         Enabled: true
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
       SSESpecification:
