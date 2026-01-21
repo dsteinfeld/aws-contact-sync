@@ -18,13 +18,17 @@ update_config() {
     echo "  Contact Types: $contact_types"
     echo "  Excluded Accounts: $excluded_accounts"
     
+    # Escape the contact_types and excluded_accounts for nested JSON
+    local escaped_contact_types=$(echo "$contact_types" | sed 's/"/\\"/g')
+    local escaped_excluded=$(echo "$excluded_accounts" | sed 's/"/\\"/g')
+    
     aws dynamodb update-item \
         --table-name "$CONFIG_TABLE" \
         --key '{"config_key":{"S":"current"}}' \
         --update-expression "SET config_data = :config, updated_at = :updated" \
         --expression-attribute-values "{
-            \":config\": {\"S\": \"{\\\"contact_types\\\":$contact_types,\\\"excluded_accounts\\\":$excluded_accounts,\\\"retry_config\\\":{\\\"max_attempts\\\":3,\\\"base_delay\\\":2.0,\\\"max_delay\\\":60.0,\\\"exponential_base\\\":2.0},\\\"notification_settings\\\":{\\\"user_notifications_config\\\":{\\\"notification_hub_region\\\":\\\"$REGION\\\",\\\"delivery_channels\\\":[\\\"EMAIL\\\"],\\\"notification_rules\\\":{}},\\\"fallback_sns_topic\\\":\\\"arn:aws:sns:$REGION:889662168126:${STACK_NAME}-notifications\\\",\\\"notify_on_failure\\\":true,\\\"notify_on_success\\\":false,\\\"notify_on_partial_failure\\\":true,\\\"failure_threshold\\\":1}}\"},
-            \":updated\": {\"S\": \"$(date -u +%Y-%m-%dT%H:%M:%S.000Z)\"}
+            \":config\": {\"S\": \"{\\\"contact_types\\\":$escaped_contact_types,\\\"excluded_accounts\\\":$escaped_excluded,\\\"retry_config\\\":{\\\"max_attempts\\\":3,\\\"base_delay\\\":2.0,\\\"max_delay\\\":60.0,\\\"exponential_base\\\":2.0},\\\"notification_settings\\\":{\\\"user_notifications_config\\\":{\\\"notification_hub_region\\\":\\\"$REGION\\\",\\\"delivery_channels\\\":[\\\"EMAIL\\\"],\\\"notification_rules\\\":{}},\\\"fallback_sns_topic\\\":\\\"arn:aws:sns:$REGION:889662168126:${STACK_NAME}-notifications\\\",\\\"notify_on_failure\\\":true,\\\"notify_on_success\\\":false,\\\"notify_on_partial_failure\\\":true,\\\"failure_threshold\\\":1}}\"},
+            \":updated\": {\"S\": \"$(date -u +%Y-%m-%dT%H:%M:%S.000Z 2>/dev/null || echo '2026-01-21T00:00:00.000Z')\"}
         }" \
         --profile "$PROFILE" \
         --region "$REGION"
