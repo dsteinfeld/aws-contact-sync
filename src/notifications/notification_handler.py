@@ -32,7 +32,12 @@ class NotificationHandler:
             UserNotificationsClient instance or None if configuration is invalid
         """
         try:
-            config = self.config_manager.get_configuration()
+            config_obj = self.config_manager.read_config()
+            if not config_obj:
+                logger.warning("No configuration found")
+                return None
+            
+            config = config_obj.to_dict()
             notification_settings = config.get("notification_settings", {})
             
             if not notification_settings:

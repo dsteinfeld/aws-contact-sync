@@ -250,6 +250,12 @@ def check_and_notify_if_complete_from_stream(
         True if notification was sent, False otherwise
     """
     try:
+        # Check if status is already "completed" to avoid infinite loop
+        current_status = new_image.get('status', {}).get('S', '')
+        if current_status == 'completed':
+            logger.info(f"Sync operation {sync_id} already marked as completed, skipping")
+            return False
+        
         # Parse target accounts from stream data
         target_accounts_list = new_image.get('target_accounts', {}).get('L', [])
         target_accounts = set([item.get('S', '') for item in target_accounts_list])
@@ -292,7 +298,7 @@ def check_and_notify_if_complete_from_stream(
             logger.error(f"Sync operation {sync_id} not found in database after completion detected")
             return False
         
-        # Update overall sync status to completed
+        # Update overall sync status to completed (this will trigger another stream event, but we check for it above)
         state_tracker.update_sync_status(sync_id, "completed")
         
         # Send aggregated notification
