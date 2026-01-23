@@ -193,6 +193,9 @@ class DynamoDBStateTracker:
     def add_account_result(self, sync_id: str, result: AccountSyncResult) -> bool:
         """Add or update result for a specific account in a sync operation.
         
+        This method uses atomic DynamoDB operations to avoid race conditions when
+        multiple account processors update the same sync operation simultaneously.
+        
         Args:
             sync_id: Unique identifier of the sync operation
             result: Account sync result to add
@@ -207,7 +210,34 @@ class DynamoDBStateTracker:
         try:
             table = self._get_table()
             
-            # First get current results
+            # Serialize the result data
+            result_data = {
+                'account_id': result.account_id,
+                'status': result.status,
+                'timestamp': result.timestamp.isoformat(),
+                'error_message': result.error_message,
+                'retry_count': result.retry_count
+            }
+            
+            # Use atomic update to set the specific account result
+            # This avoids read-modify-write race conditions
+            # We update results.{account_id} directly using a map path
+            response = table.update_item(
+                Key={'sync_id': sync_id},
+                UpdateExpression='SET results = if_not_exists(results, :empty_map), updated_at = :updated',
+                ExpressionAttributeValues={
+                    ':empty_map': '{}',
+                    ':updated': datetime.now(timezone.utc).isoformat()
+                },
+                ConditionExpression='attribute_exists(sync_id)',
+                ReturnValues='NONE'
+            )
+            
+            # Now update the specific account result atomically
+            # We need to read current results, update, and write back as JSON string
+            # Since DynamoDB doesn't support nested JSON updates in strings, we need a different approach
+            
+            # Get current results
             response = table.get_item(Key={'sync_id': sync_id})
             
             if 'Item' not in response:
@@ -216,27 +246,36 @@ class DynamoDBStateTracker:
             current_results = json.loads(response['Item'].get('results', '{}'))
             
             # Add new result
-            current_results[result.account_id] = {
-                'account_id': result.account_id,
-                'status': result.status,
-                'timestamp': result.timestamp.isoformat(),
-                'error_message': result.error_message,
-                'retry_count': result.retry_count
-            }
+            current_results[result.account_id] = result_data
             
-            # Update the record
-            table.update_item(
-                Key={'sync_id': sync_id},
-                UpdateExpression='SET results = :results, updated_at = :updated',
-                ExpressionAttributeValues={
-                    ':results': json.dumps(current_results),
-                    ':updated': datetime.now(timezone.utc).isoformat()
-                }
-            )
+            # Update with conditional check to ensure we're updating the right version
+            # Use the updated_at timestamp as a version check
+            old_updated_at = response['Item'].get('updated_at')
             
+            try:
+                table.update_item(
+                    Key={'sync_id': sync_id},
+                    UpdateExpression='SET results = :results, updated_at = :updated',
+                    ConditionExpression='updated_at = :old_updated OR attribute_not_exists(updated_at)',
+                    ExpressionAttributeValues={
+                        ':results': json.dumps(current_results),
+                        ':updated': datetime.now(timezone.utc).isoformat(),
+                        ':old_updated': old_updated_at
+                    }
+                )
+            except ClientError as e:
+                if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
+                    # Another update happened, retry the operation
+                    logger.warning(f"Concurrent update detected for sync {sync_id}, retrying...")
+                    return self.add_account_result(sync_id, result)
+                raise
+            
+            logger.info(f"Successfully updated result for account {result.account_id} in sync {sync_id}")
             return True
             
         except ClientError as e:
+            if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
+                raise ValueError(f"Sync operation {sync_id} does not exist")
             logger.error(f"Failed to add account result: {e}")
             raise
         except (BotoCoreError, Exception) as e:
