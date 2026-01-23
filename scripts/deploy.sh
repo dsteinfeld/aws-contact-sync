@@ -48,6 +48,9 @@ OPTIONS:
     -r, --region REGION         AWS region [default: us-east-1]
     -a, --account-id ACCOUNT    Management account ID (required)
     -n, --notification-email    Email for notifications (optional)
+    --ses-account-id ACCOUNT    SES account ID for cross-account email (required)
+    --ses-role-name ROLE        SES IAM role name [default: ContactSyncSESRole]
+    --ses-sender-domain DOMAIN  SES verified sender domain (required)
     -s, --stack-name NAME       CloudFormation stack name [default: aws-contact-sync]
     -p, --profile PROFILE       AWS CLI profile name [default: default]
     --guided                    Use SAM guided deployment
@@ -57,8 +60,14 @@ OPTIONS:
     -h, --help                  Show this help message
 
 EXAMPLES:
-    # Deploy to production with management account ID
-    $0 --environment prod --account-id 123456789012 --notification-email admin@company.com
+    # Deploy to production with SES configuration
+    $0 --environment prod --account-id 123456789012 \\
+       --ses-account-id 987654321098 --ses-sender-domain example.com
+
+    # Deploy with custom SES role name
+    $0 --environment prod --account-id 123456789012 \\
+       --ses-account-id 987654321098 --ses-role-name MyCustomSESRole \\
+       --ses-sender-domain example.com
 
     # Deploy to development environment with specific profile
     $0 --environment dev --account-id 123456789012 --region us-west-2 --profile my-aws-profile
@@ -77,6 +86,9 @@ ENVIRONMENT="prod"
 REGION="$DEFAULT_REGION"
 MANAGEMENT_ACCOUNT_ID=""
 NOTIFICATION_EMAIL=""
+SES_ACCOUNT_ID=""
+SES_ROLE_NAME="ContactSyncSESRole"
+SES_SENDER_DOMAIN=""
 AWS_PROFILE=""
 GUIDED=false
 NO_CONFIRM=false
@@ -99,6 +111,18 @@ while [[ $# -gt 0 ]]; do
             ;;
         -n|--notification-email)
             NOTIFICATION_EMAIL="$2"
+            shift 2
+            ;;
+        --ses-account-id)
+            SES_ACCOUNT_ID="$2"
+            shift 2
+            ;;
+        --ses-role-name)
+            SES_ROLE_NAME="$2"
+            shift 2
+            ;;
+        --ses-sender-domain)
+            SES_SENDER_DOMAIN="$2"
             shift 2
             ;;
         -s|--stack-name)
@@ -166,6 +190,18 @@ validate_email() {
     fi
 }
 
+validate_ses_params() {
+    if [[ -n "$SES_ACCOUNT_ID" && ! "$SES_ACCOUNT_ID" =~ ^[0-9]{12}$ ]]; then
+        log_error "Invalid SES account ID: $SES_ACCOUNT_ID. Must be 12 digits."
+        exit 1
+    fi
+    
+    if [[ -n "$SES_SENDER_DOMAIN" && ! "$SES_SENDER_DOMAIN" =~ ^[a-zA-Z0-9][a-zA-Z0-9-]{1,61}[a-zA-Z0-9]\.[a-zA-Z]{2,}$ ]]; then
+        log_error "Invalid SES sender domain: $SES_SENDER_DOMAIN. Must be a valid domain name."
+        exit 1
+    fi
+}
+
 validate_aws_cli() {
     if ! command -v aws &> /dev/null; then
         log_error "AWS CLI is not installed. Please install it first."
@@ -228,11 +264,23 @@ pre_deployment_checks() {
             exit 1
         fi
         validate_account_id
+        
+        if [[ -z "$SES_ACCOUNT_ID" ]]; then
+            log_error "SES account ID is required for non-guided deployment (--ses-account-id)"
+            exit 1
+        fi
+        
+        if [[ -z "$SES_SENDER_DOMAIN" ]]; then
+            log_error "SES sender domain is required for non-guided deployment (--ses-sender-domain)"
+            exit 1
+        fi
     fi
     
     if [[ -n "$NOTIFICATION_EMAIL" ]]; then
         validate_email
     fi
+    
+    validate_ses_params
     
     validate_permissions
     
@@ -295,6 +343,9 @@ deploy_application() {
         "--parameter-overrides"
         "Environment=$ENVIRONMENT"
         "ManagementAccountId=$MANAGEMENT_ACCOUNT_ID"
+        "SESAccountId=$SES_ACCOUNT_ID"
+        "SESRoleName=$SES_ROLE_NAME"
+        "SESSenderDomain=$SES_SENDER_DOMAIN"
     )
     
     # Add optional parameters
