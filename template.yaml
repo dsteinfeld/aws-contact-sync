@@ -195,6 +195,7 @@ Resources:
               Action:
                 - dynamodb:GetItem
                 - dynamodb:Query
+                - dynamodb:UpdateItem
               Resource:
                 - !GetAtt ConfigTable.Arn
                 - !GetAtt StateTable.Arn
