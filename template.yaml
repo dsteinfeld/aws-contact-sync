@@ -35,7 +35,7 @@ Parameters:
   SESRoleName:
     Type: String
     Description: IAM role name in SES account that allows sending emails
-    Default: 'ContactSyncSESRole'
+    Default: 'OrgSES-SendingRole'
   
   SESSenderDomain:
     Type: String

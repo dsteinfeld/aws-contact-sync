@@ -26,7 +26,7 @@ SES Account (Your existing SES account)
 
 In the AWS account where SES is configured, create an IAM role:
 
-**Role Name:** `ContactSyncSESRole` (or your preferred name)
+**Role Name:** `OrgSES-SendingRole` (or your preferred name)
 
 **Trust Policy:**
 ```json
@@ -70,7 +70,7 @@ In the AWS account where SES is configured, create an IAM role:
 
 After creating the role, note its ARN. It will look like:
 ```
-arn:aws:iam::<SES_ACCOUNT_ID>:role/ContactSyncSESRole
+arn:aws:iam::<SES_ACCOUNT_ID>:role/OrgSES-SendingRole
 ```
 
 ### Step 3: Deploy with SES Parameters
@@ -82,7 +82,7 @@ sam deploy \
   --parameter-overrides \
     ManagementAccountId=889662168126 \
     SESAccountId=<YOUR_SES_ACCOUNT_ID> \
-    SESRoleName=ContactSyncSESRole \
+    SESRoleName=OrgSES-SendingRole \
     SESSenderDomain=<YOUR_VERIFIED_DOMAIN>
 ```
 
@@ -92,7 +92,7 @@ sam deploy \
   --parameter-overrides \
     ManagementAccountId=889662168126 \
     SESAccountId=123456789012 \
-    SESRoleName=ContactSyncSESRole \
+    SESRoleName=OrgSES-SendingRole \
     SESSenderDomain=example.com
 ```
 
@@ -146,7 +146,7 @@ AWS Contact Sync <noreply@your-domain.com>
 | Parameter | Description | Example |
 |-----------|-------------|---------|
 | `SESAccountId` | AWS account ID where SES is configured | `123456789012` |
-| `SESRoleName` | IAM role name in SES account | `ContactSyncSESRole` |
+| `SESRoleName` | IAM role name in SES account | `OrgSES-SendingRole` |
 | `SESSenderDomain` | Verified domain in SES | `example.com` |
 
 ### Environment Variables (Auto-configured)

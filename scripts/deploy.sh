@@ -49,7 +49,7 @@ OPTIONS:
     -a, --account-id ACCOUNT    Management account ID (required)
     -n, --notification-email    Email for notifications (optional)
     --ses-account-id ACCOUNT    SES account ID for cross-account email (required)
-    --ses-role-name ROLE        SES IAM role name [default: ContactSyncSESRole]
+    --ses-role-name ROLE        SES IAM role name [default: OrgSES-SendingRole]
     --ses-sender-domain DOMAIN  SES verified sender domain (required)
     -s, --stack-name NAME       CloudFormation stack name [default: aws-contact-sync]
     -p, --profile PROFILE       AWS CLI profile name [default: default]
@@ -87,7 +87,7 @@ REGION="$DEFAULT_REGION"
 MANAGEMENT_ACCOUNT_ID=""
 NOTIFICATION_EMAIL=""
 SES_ACCOUNT_ID=""
-SES_ROLE_NAME="ContactSyncSESRole"
+SES_ROLE_NAME="OrgSES-SendingRole"
 SES_SENDER_DOMAIN=""
 AWS_PROFILE=""
 GUIDED=false
