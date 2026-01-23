@@ -25,6 +25,23 @@ Parameters:
     Default: 90
     Description: CloudWatch log retention period in days
     AllowedValues: [1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653]
+  
+  SESAccountId:
+    Type: String
+    Description: AWS Account ID where SES is configured (for cross-account access)
+    AllowedPattern: '[0-9]{12}'
+    ConstraintDescription: Must be a valid 12-digit AWS account ID
+  
+  SESRoleName:
+    Type: String
+    Description: IAM role name in SES account that allows sending emails
+    Default: 'ContactSyncSESRole'
+  
+  SESSenderDomain:
+    Type: String
+    Description: Verified domain in SES for sending emails (e.g., example.com)
+    AllowedPattern: '^[a-zA-Z0-9][a-zA-Z0-9-]{1,61}[a-zA-Z0-9]\.[a-zA-Z]{2,}$'
+    ConstraintDescription: Must be a valid domain name
 
 Globals:
   Function:
@@ -188,6 +205,8 @@ Resources:
         Variables:
           CONFIG_TABLE_NAME: !Sub '${AWS::StackName}-config'
           STATE_TABLE_NAME: !Sub '${AWS::StackName}-state'
+          SES_ROLE_ARN: !Sub 'arn:aws:iam::${SESAccountId}:role/${SESRoleName}'
+          SES_SENDER_DOMAIN: !Ref SESSenderDomain
       Policies:
         - Version: '2012-10-17'
           Statement:
@@ -205,6 +224,10 @@ Resources:
               Action:
                 - account:GetAlternateContact
               Resource: '*'
+            - Effect: Allow
+              Action:
+                - sts:AssumeRole
+              Resource: !Sub 'arn:aws:iam::${SESAccountId}:role/${SESRoleName}'
             - Effect: Allow
               Action:
                 - sns:Publish

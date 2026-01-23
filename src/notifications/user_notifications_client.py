@@ -89,6 +89,39 @@ class UserNotificationsClient:
             self._sns_client = boto3.client('sns', region_name=self.region)
         return self._sns_client
     
+    def _get_ses_client(self):
+        """Get or create SES client.
+        
+        Supports both same-account and cross-account SES access via role assumption.
+        """
+        if not hasattr(self, '_ses_client') or self._ses_client is None:
+            import os
+            ses_role_arn = os.environ.get('SES_ROLE_ARN')
+            
+            if ses_role_arn:
+                # Cross-account SES access via role assumption
+                logger.info(f"Assuming role for cross-account SES access: {ses_role_arn}")
+                sts_client = boto3.client('sts', region_name=self.region)
+                
+                assumed_role = sts_client.assume_role(
+                    RoleArn=ses_role_arn,
+                    RoleSessionName='ContactSyncSESSession'
+                )
+                
+                credentials = assumed_role['Credentials']
+                self._ses_client = boto3.client(
+                    'ses',
+                    region_name=self.region,
+                    aws_access_key_id=credentials['AccessKeyId'],
+                    aws_secret_access_key=credentials['SecretAccessKey'],
+                    aws_session_token=credentials['SessionToken']
+                )
+            else:
+                # Same-account SES access
+                self._ses_client = boto3.client('ses', region_name=self.region)
+                
+        return self._ses_client
+    
     def _get_account_mgmt_client(self):
         """Get or create Account Management client."""
         if self._account_mgmt_client is None:
@@ -122,7 +155,10 @@ class UserNotificationsClient:
             return None
 
     def send_notification(self, message: NotificationMessage) -> bool:
-        """Send notification using User Notifications with SNS fallback.
+        """Send notification to Security contact via SES, with SNS fallback.
+        
+        Primary: Send email directly to Security contact using SES (no subscription needed)
+        Fallback: Send to SNS topic if SES fails or no Security contact exists
         
         Args:
             message: Notification message to send
@@ -130,85 +166,91 @@ class UserNotificationsClient:
         Returns:
             True if notification was sent successfully, False otherwise
         """
-        user_notifications_error = None
+        # Get Security contact email
+        security_email = self._get_security_contact_email()
         
-        # Try User Notifications first
-        try:
-            if self._send_user_notification(message):
-                logger.info(f"Notification sent via User Notifications: {message.title}")
-                return True
-        except Exception as e:
-            user_notifications_error = str(e)
-            logger.warning(f"User Notifications failed: {user_notifications_error}")
+        if security_email:
+            # Try to send via SES to Security contact
+            try:
+                if self._send_ses_email(security_email, message):
+                    logger.info(f"Notification sent via SES to Security contact: {security_email}")
+                    return True
+                else:
+                    logger.warning(f"SES delivery failed to {security_email}, falling back to SNS")
+            except Exception as e:
+                logger.warning(f"SES error: {e}, falling back to SNS")
+        else:
+            logger.warning("No Security contact configured, using SNS fallback")
         
-        # Fallback to SNS with error details
-        if self._send_sns_notification(message, user_notifications_error):
+        # Fallback to SNS
+        if self._send_sns_notification(message, None):
             logger.info(f"Notification sent via SNS fallback: {message.title}")
             return True
         
-        logger.error(f"Failed to send notification via both User Notifications and SNS: {message.title}")
+        logger.error(f"Failed to send notification via both SES and SNS: {message.title}")
         return False
 
-    def _send_user_notification(self, message: NotificationMessage) -> bool:
-        """Send notification via AWS User Notifications to Security contact.
+    def _send_ses_email(self, recipient_email: str, message: NotificationMessage) -> bool:
+        """Send email directly to recipient using SES.
         
         Args:
+            recipient_email: Email address to send to
             message: Notification message to send
             
         Returns:
             True if successful, False otherwise
         """
         try:
-            # Get Security contact email
-            security_email = self._get_security_contact_email()
-            if not security_email:
-                logger.warning("No Security contact email available, cannot send User Notification")
-                return False
+            client = self._get_ses_client()
             
-            client = self._get_user_notifications_client()
+            # Format email body
+            email_body = self._format_email_message(message, None)
             
-            # Create notification content
-            content = {
-                'title': message.title,
-                'body': message.message,
-                'metadata': {
-                    **message.metadata,
-                    'timestamp': message.timestamp.isoformat(),
-                    'notification_type': message.notification_type,
-                    'priority': message.priority
-                }
-            }
-            
-            # Send notification via User Notifications
-            # Using the correct API for AWS User Notifications service
-            response = client.send_user_notification(
-                NotificationConfiguration={
-                    'Subject': message.title,
-                    'Body': message.message,
-                    'Priority': message.priority.upper()
+            # Send email via SES
+            response = client.send_email(
+                Source=f"AWS Contact Sync <noreply@{self._get_ses_domain()}>",
+                Destination={
+                    'ToAddresses': [recipient_email]
                 },
-                Recipients=[{
-                    'Type': 'EMAIL',
-                    'Address': security_email
-                }],
-                Source='aws-contact-sync',
-                EventType=message.notification_type
+                Message={
+                    'Subject': {
+                        'Data': message.title,
+                        'Charset': 'UTF-8'
+                    },
+                    'Body': {
+                        'Text': {
+                            'Data': email_body,
+                            'Charset': 'UTF-8'
+                        }
+                    }
+                }
             )
             
-            logger.info(f"User Notification sent to Security contact: {security_email}")
-            return response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 200
+            message_id = response.get('MessageId')
+            logger.info(f"SES email sent successfully to {recipient_email}, MessageId: {message_id}")
+            return True
             
         except ClientError as e:
             error_code = e.response.get('Error', {}).get('Code', 'Unknown')
             error_msg = e.response.get('Error', {}).get('Message', str(e))
-            logger.warning(f"User Notifications API error ({error_code}): {error_msg}")
-            raise Exception(f"User Notifications API error: {error_code} - {error_msg}")
-        except BotoCoreError as e:
-            logger.warning(f"User Notifications connection error: {e}")
-            raise Exception(f"User Notifications connection error: {e}")
+            logger.error(f"SES error ({error_code}): {error_msg}")
+            return False
         except Exception as e:
-            logger.error(f"Unexpected error in User Notifications: {e}")
-            raise
+            logger.error(f"Unexpected error sending SES email: {e}")
+            return False
+    
+    def _get_ses_domain(self) -> str:
+        """Get the SES verified domain for sending emails.
+        
+        Returns:
+            Domain name for SES sender address
+        """
+        # This should be configured via environment variable or config
+        # For now, return a placeholder that needs to be configured
+        import os
+        return os.environ.get('SES_SENDER_DOMAIN', 'example.com')
+
+
 
     def _send_sns_notification(self, message: NotificationMessage, user_notifications_error: Optional[str] = None) -> bool:
         """Send notification via SNS fallback.
