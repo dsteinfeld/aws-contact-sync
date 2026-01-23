@@ -99,7 +99,7 @@ CONFIG_DATA=$(cat <<EOF
     },
     "fallback_sns_topic": "$SNS_TOPIC_ARN",
     "notify_on_failure": true,
-    "notify_on_success": false,
+    "notify_on_success": true,
     "notify_on_partial_failure": true,
     "failure_threshold": 1
   }

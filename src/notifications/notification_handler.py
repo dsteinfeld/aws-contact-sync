@@ -120,7 +120,7 @@ class NotificationHandler:
             else:
                 logger.warning(f"Failed to send notification for sync {sync_operation.sync_id}")
             
-            return notification_sent or True  # Return True if no notification needed
+            return notification_sent
             
         except Exception as e:
             logger.error(f"Failed to handle sync completion notification: {e}")
